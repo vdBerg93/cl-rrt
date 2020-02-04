@@ -1,6 +1,7 @@
 # CA-CL-RRT
-Curvature-Aware Closed-Loop Rapidly-exploring Random Tree
-A ROS C++ implementation.
+Curvature-Aware Closed-Loop Rapidly-exploring Random Tree, a ROS C++ implementation.
+The world contains moving pedestrians, which can be controlled by publishing the positions to the ped_link# topic.
+This can be done with the pedsim_ros package, or the spencer people simulations package.
 
 ## Getting Started
 This package contains:
