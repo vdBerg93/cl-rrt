@@ -1,0 +1,9 @@
+float64[] state
+float64[] goal
+float64 vmax
+bool bend
+float64[] Cxy
+float64[] Cxs
+---
+car_msgs/Reference[] ref
+car_msgs/Trajectory[] tra

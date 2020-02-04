@@ -1,0 +1,50 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/home/berend/catkin_ws/devel/include/**",
+                "/opt/ros/melodic/include/**",
+                "/home/berend/catkin_ws_spencer/devel/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/simulator/cloud_conversions/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/control/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/simulator/detection_3d_to_markers/include/**",
+                "/home/berend/catkin_ws/src/gazebo_ros_pkgs/gazebo_plugins/include/**",
+                "/home/berend/catkin_ws/src/gazebo_ros_pkgs/gazebo_ros/include/**",
+                "/home/berend/catkin_ws/src/gazebo_ros_pkgs/gazebo_ros_control/include/**",
+                "/home/berend/catkin_ws/src/lmpcc/include/**",
+                "/home/berend/catkin_ws/src/lmpcc_obstacle_feed/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/mission_planner/include/**",
+                "/home/berend/catkin_ws/src/mobile_robot_state_publisher/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/obstacle_tracker/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/pcl_converter/include/**",
+                "/home/berend/catkin_ws/src/pedsim_ros/3rdparty/libpedsim/include/**",
+                "/home/berend/catkin_ws/src/pedsim_ros/pedsim_sensors/include/**",
+                "/home/berend/catkin_ws/src/pedsim_ros/pedsim_simulator/include/**",
+                "/home/berend/catkin_ws/src/pedsim_ros/pedsim_utils/include/**",
+                "/home/berend/catkin_ws/src/pedsim_ros/pedsim_visualizer/include/**",
+                "/home/berend/catkin_ws/src/road_perception_simulator/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/rrt/include/**",
+                "/home/berend/catkin_ws_spencer/src/spencer_people_tracking/detection/monocular_detectors/rwth_ground_hog/include/**",
+                "/home/berend/catkin_ws_spencer/src/spencer_people_tracking/utils/rwth_ground_plane/include/**",
+                "/home/berend/catkin_ws_spencer/src/spencer_people_tracking/detection/rgbd_detectors/rwth_upper_body_detector/include/**",
+                "/home/berend/catkin_ws_spencer/src/spencer_people_tracking/utils/spencer_diagnostics/include/**",
+                "/home/berend/catkin_ws_spencer/src/spencer_people_tracking/detection/laser_detectors/srl_laser_detectors/include/**",
+                "/home/berend/catkin_ws_spencer/src/spencer_people_tracking/detection/laser_detectors/srl_laser_features/include/**",
+                "/home/berend/catkin_ws_spencer/src/spencer_people_tracking/detection/laser_detectors/srl_laser_segmentation/include/**",
+                "/home/berend/catkin_ws_spencer/src/spencer_people_tracking/tracking/people/srl_nearest_neighbor_tracker/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/state_estimator/include/**",
+                "/usr/include/**"
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

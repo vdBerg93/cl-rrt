@@ -1,0 +1,21 @@
+<launch>
+	<!-- Initialize parameters -->
+	<param 	name="ctrl/tla"		value="1.4"	/>
+	<param 	name="ctrl/mindla"	value="3.2"	/>
+	<param 	name="ctrl/dlavmin"	value="3"	/>
+	<param 	name="ctrl/refint"	value="0.02"	/>
+	<param 	name="ctrl/refmindist"	value="0.2"	/>
+	<param 	name="ctrl/sampleTime" 	value="0.04"	/>
+	<param 	name="ctrl/Kp"		value="8"	/>
+	<param 	name="ctrl/Ki" 		value="0.05"	/>
+	<param  name="max_velocity"	value="5"	/>
+	<param 	name="motionplanner/replan" value="1"/>
+	<param 	name="motionplanner/weight_distance" value="10"/>
+	<param 	name="motionplanner/weight_curvature" value="5"/>
+	<param 	name="motionplanner/weight_obstacle_gain" value="0"/>
+	<!-- OBSTACLE WEIGHTS -->
+	<!-- slope value small, distance that increases cost large-->
+	<!-- weight = 4 gives cost up to approximately 1m. W=2 aprox 2m -->
+	<param 	name="motionplanner/weight_obstacle_slope" value="4"/> <!-- was 4 -->
+	<param 	name="motionplanner/weight_lanedeviation" value="1"/>
+</launch>

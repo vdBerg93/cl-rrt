@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<launch>
+	<include file="$(find rrt)/launch/parameters.launch" />
+	
+	<!-- Start the obstacle detection node -->
+	<node
+		pkg="pcl_converter"
+		type="pcl_converter_node"
+		name="pcl_converter_node"
+		respawn="true"
+		respawn_delay="2"
+		output="log"
+	/>
+	<!-- Start the RRT planner node -->
+	<node
+		pkg="rrt"
+		type="rrt_node"
+		name="rrt_node"
+		output="screen"
+		required="false"
+	/>
+	<!-- Start the mission planner -->
+	<node
+		pkg="mission_planner"
+		type="mission_planner_node"
+		name="mission_planner_node"
+		output="screen"
+		required="true"
+	/>
+	<!-- Start the control node -->
+
+	<!-- State estimator node -->
+	<node
+		pkg="state_estimator"
+		type="state_estimator_node"
+		name="state_estimator_node"
+		respawn="true"
+		output="log"
+	/>
+	<!-- Start the simulation -->
+	<include file="$(find car_simulation)/launch/simulation.launch">
+		<arg name="gazebo_gui" value="false" />
+		<arg name="world_name" value="myworldobs.world" />
+		<arg name="rviz" value="true" />
+	</include>
+</launch>
+

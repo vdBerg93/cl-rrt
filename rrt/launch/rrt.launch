@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<launch>
+	<!-- Load parameters-->
+	<include 
+		file="$(find rrt)/launch/parameters.launch" 
+	/>
+	<!-- State estimator node -->
+	<node
+		pkg="state_estimator"
+		type="state_estimator_node"
+		name="state_estimator_node"
+		respawn="true"
+	/>
+	<!-- Lane detection -->
+	<node
+		pkg="road_perception_simulator"
+		type="road_perception_simulator_node"
+		name="road_perception_simulator_node"
+		respawn="true"
+	/>
+	<!-- Obstacle tracker-->
+	<node
+		pkg="obstacle_tracker"
+		type="obstacle_tracker_node"
+		name="obstacle_tracker_node"
+		output="log"
+		respawn="true"
+	/>
+	<!-- Start the RRT planner node -->
+	<node
+		pkg="rrt"
+		type="rrt_node"
+		name="rrt_node"
+		output="screen"
+		required="true"
+	/>
+	<!-- Start the mission planner -->
+	<node
+		pkg="mission_planner"
+		type="mission_planner_node"
+		name="mission_planner_node"
+		output="log"
+		required="true"
+	/>	
+	<!-- Rqt reconfigure -->
+	<!-- <node
+		pkg="rqt_reconfigure"
+		type="rqt_reconfigure"
+		name="rqt_reconfigure"
+		respawn="true"
+	/> -->
+</launch>

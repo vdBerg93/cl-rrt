@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/opt/ros/melodic/include/**",
+                "/home/berend/catkin_ws/devel/include/**",
+                "/home/berend/catkin_ws/src/me41025_simulator/cloud_conversions/include/**",
+                "/home/berend/catkin_ws/src/group03/control_solution/include/**",
+                "/home/berend/catkin_ws/src/me41025_simulator/detection_3d_to_markers/include/**",
+                "/home/berend/catkin_ws/src/group03/opencv_solution/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/pcl_converter/include/**",
+                "/home/berend/catkin_ws/src/group03/pcl_solution/include/**",
+                "/home/berend/catkin_ws/src/motionplanner/rrt/include/**",
+                "/usr/include/**"
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

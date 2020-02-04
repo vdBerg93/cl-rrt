@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="use_sim_time" default="true" />
+  <arg name="gui" default="false" />
+  <arg name="headless" default="false" />
+  <arg name="world_name" default="$(find car_simulation)/worlds/pedestrian_crossing_fix.world" />
+  <!-- <arg name="world_name" default="$(find car_simulation)/worlds/lines.world" /> -->
+  <arg name="model" default="$(find prius_description)/urdf/prius.urdf"/>
+  <arg name="rvizconfig" default="$(find car_simulation)/rviz/demo.rviz" />
+
+  <param name="robot_description" textfile="$(arg model)"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="verbose" value="true"/>
+    <arg name="debug" value="0" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="use_sim_time" value="$(arg use_sim_time)" />
+    <arg name="headless" value="$(arg headless)" />
+    <arg name="world_name" value="$(arg world_name)" />
+  </include>
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" >
+    <!-- <remap from="robot_description" to="different_robot_description" /> -->
+    <!-- <remap from="joint_states" to="/prius/joint_states" /> -->
+  </node>
+  <node pkg="cloud_conversions"       type="cloud_conversions_node"       name="cloud_conversions_node"       output="screen" />
+
+  <node pkg="fake_localization" type="fake_localization" name="fake_localization">
+    <!-- <remap from="base_pose_ground_truth" to="/prius/base_pose_ground_truth"/> -->
+  </node>
+  <node pkg="tf2_ros" type="static_transform_publisher" name="very_inaccurate_odom" args="0 0 0 0 0 0 odom base_link"/>
+
+  <!-- Launch Pedsim world -->
+  <!-- <include file="$(find pedsim_simulator)/launch/ped_crossing.launch">  </include> -->
+  <include file="$(find pedsim_simulator)/launch/ped_walking.launch">  </include>
+
+  <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" args="-param robot_description -urdf -x 0 -y 0 -z 0 -model prius"/>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)" respawn="true" />
+
+  <!-- Establish connection between pedsim and ros -->
+  <!--node pkg="person_control"       type="person_control_node"       name="person_control_node"       output="screen" /-->
+
+
+<!-- <include file="$(find lmpcc)/launch/lmpcc.launch"> </include> -->
+  <!-- <include file="$(find lmpcc_obstacle_feed)/launch/lmpcc_obstacle_feed.launch"> </include> -->
+  
+
+
+</launch>

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<launch>
+	<!-- Launch rrt nodes -->
+	<include file="$(find rrt)/launch/rrt.launch">
+	</include>
+	<!-- Launch lmpcc obstacle feed-->
+	<include file="$(find lmpcc_obstacle_feed)/launch/lmpcc_obstacle_feed.launch">
+	</include>
+	<!-- Launch pedestrian visualizer-->
+	<include file="$(find pedsim_visualizer)/launch/visualizer.launch">
+	</include>
+	<!-- Start the simulation -->
+	<include file="$(find rrt)/launch/pedworld.launch">
+	</include>
+	<!-- Launch obstacle tracker-->
+	<!--node
+		pkg="obstacle_tracker"
+		type="obstacle_tracker_node"
+		name="obstacle_tracker_node"
+		required="true"
+	/-->
+</launch>
