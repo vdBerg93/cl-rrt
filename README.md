@@ -1,5 +1,6 @@
 # CA-CL-RRT
 Curvature-Aware Closed-Loop Rapidly-exploring Random Tree, a ROS C++ implementation.
+Package contains the motion planner with obstacle detection and pedestrian tracking.
 The world contains moving pedestrians, which can be controlled by publishing the positions to the ped_link# topic.
 This can be done with the pedsim_ros package, or the spencer people simulations package.
 
