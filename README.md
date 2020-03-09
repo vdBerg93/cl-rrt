@@ -42,7 +42,7 @@ The motion planner object keeps track of the obstacles. They are updated with a 
 Motionplanner::planmotion(...)->expand_tree(...)-> Simulation sim(...) --> Simulation::Propagate(...)
 Within the Propagate function, there is a function called myCollisionCheck(). Adjust the content of this function in collisioncheck.cpp to use your collision detection method.
 
-The distance to the closest obstacle is used in the cost function. The cost function is evaluated in Simulation::Propagate(...) and initializeTree(...). Remove make sure to feed Dobs or alternatively, just feed Dobs=0 into the cost function.
+The distance to the closest obstacle is used in the cost function. The cost function is evaluated in Simulation::Propagate(...) and initializeTree(...). Make sure to feed Dobs or alternatively, just feed Dobs=0 into the cost function.
 
 
 ### Adjusting the planning frequency
