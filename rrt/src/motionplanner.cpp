@@ -2,7 +2,9 @@
 #include "transformations.cpp"
 
 // Get updated obstacles from obstacle detection node
+// Replace this function with obstaclegrid
 bool MotionPlanner::updateObstacles(){
+	ROS_WARN_STREAM("In motionplanner: adjust MotionPlanner::updateObstacles() with occupancy grid message");
     car_msgs::getobstacles srv;
     (*clientPtr).call(srv);
 	det = srv.response.obstacles;
@@ -10,33 +12,35 @@ bool MotionPlanner::updateObstacles(){
 
 // State callback message
 void MotionPlanner::updateState(car_msgs::State msg){
+	// state = [x,y,theta,delta,v,a]
+	ROS_WARN_STREAM("In MotionPlanner::updateState: edit state message to fit Prius")
 	state.clear(); 	state.insert(state.begin(), msg.state.begin(), msg.state.end());
 	assert(state.size()==6);
 }
 
 
+// Clear the path stored in the motion planner
 bool MotionPlanner::resetPlanner(car_msgs::resetplanner::Request& req, car_msgs::resetplanner::Response& resp){
 	motionplan.clear(); 	return true;
 }
 
-// Motion planner callback
+//*****************************************
+//    motion request callback function (MAIN)
+//*****************************************
 void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	fail_acclimit=0; fail_collision=0; fail_iterlimit=0; sim_count = 0;
 	ROS_INFO_STREAM("---------"<<endl<<"Received request, processing...");
 	if(debug_mode){cout<<"Goal =["<<req.goal[0]<<", "<<req.goal[1]<<", "<<req.goal[2]<<", "<<req.goal[3]<<"]"<<endl;}
 	// Update variables
-	Vehicle veh; veh.setPrius();	
-	vector<double> worldState = state;
-	vector<double> carPose = transformStateToLocal(worldState);
-	updateLookahead(carPose[4]);	updateReferenceResolution(carPose[4]); 
+	Vehicle veh; veh.setPrius();											// Initialize vehicle parameters
+	vector<double> worldState = state;										// State in world coordinates
+	vector<double> carPose = transformStateToLocal(worldState);				// State in car coordinates
+	updateLookahead(carPose[4]);	updateReferenceResolution(carPose[4]); 	// Update planner parameters
+	vmax = req.vmax; vgoal = req.goal[3];									// Update globals
+	
+	updateObstacles();														// Update obstacles
+	// ROS_INFO_STREAM("Considering "<<det.size()<<" obstacles.");
 
-	// debug fixing of ref_res =nan
-	assert(!isnan(carPose[0])); assert(!isnan(carPose[1])); assert(!isnan(carPose[2])); assert(!isnan(carPose[3])); assert(!isnan(carPose[4]));
-	assert(!isnan(ref_res)); 
-
-	vmax = req.vmax; vgoal = req.goal[3];
-	updateObstacles();
-	ROS_INFO_STREAM("Considering "<<det.size()<<" obstacles.");
 	// Determine an upperbound of the lateral acceleration introduced by bending the path
 	if (req.Cxy.size()>0){
 		if(debug_mode){cout<<"Cxy=["<<req.Cxy[0]<<", "<<req.Cxy[1]<<", "<<req.Cxy[2]<<endl;}
@@ -45,11 +49,14 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 		ay_road_max = 0;
 	}
 
-	// Transform nodes to local coordinates
+	//******************************************
+	// Transforming last planner path and obstacle positions
+	//******************************************
 	transformNodesWorldToCar(bestNodes,worldState);
 	if(req.bend){	
 		for(auto it = det.begin(); it!=det.end(); ++it){
 			// Convert the obstacles
+			
 			transformPoseCarToRoad(it->obb.center.x,it->obb.center.y,it->obb.center.theta,req.Cxy,req.Cxs);
 			transformVelocityToRoad(it->obb.center.x, it->obb.center.y,it->vel.linear.x, it->vel.linear.y, req.Cxy);
 		}
@@ -59,33 +66,34 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	
 	// Initialize RRT planner
 	MyRRT RRT(req.goal,req.laneShifts,req.Cxy, req.bend);	
+	
+	// UPDATE OBSTACLE DETECTIONS and car state
 	RRT.det = det; RRT.carState = carPose; 
+
 	ROS_INFO_STREAM("Initializing tree...");
 	if (!commit_path){
 		bestNodes.clear();
 	}
 
-	initializeTree(RRT,veh,bestNodes,carPose);
-	for(auto it = RRT.tree.begin(); it!=RRT.tree.end(); it++){
-		showNode(*it);
-	}
-	assert(RRT.tree.size()>0);	
+	initializeTree(RRT,veh,bestNodes,carPose); assert(RRT.tree.size()>0);	
+	// for(auto it = RRT.tree.begin(); it!=RRT.tree.end(); it++){	showNode(*it);	}		// Remove comment to print nodes
 
-	// Build the tree
+	//*******************************************
+	// TREE BUILDING LOOP 
+	// ******************************************
+	Timer timer(200); int iter = 0;						// <---- MOTION PLANNER UPDATE RATE!
 	ROS_INFO_STREAM("Starting the tree build...");
-	Timer timer(200); int iter = 0;				
 	for(iter; timer.Get(); iter++){
 		expandTree(veh, RRT, pubPtr, det, req.Cxy); 
 	};
 	ROS_INFO_STREAM("Expansion complete. Tree size is "<<RRT.tree.size()<<" after "<<iter<<" iterations");
 	ROS_INFO_STREAM("Fail counters | col: "<<fail_collision<<" iter: "<<fail_iterlimit<<" acc: "<<fail_acclimit<<" sim it: "<<sim_count);
 
-
-	// Select best path 
-	if (!commit_path){
-		bestNodes.clear();	
-	}
-	bestNodes = extractBestPath(RRT.tree,pubPtr);
+	// ********************************************************
+	// Select a best path and tranform it to world coordinates
+	// ********************************************************
+	if (!commit_path){	bestNodes.clear();	}
+	bestNodes = extractBestPath(RRT.tree,pubPtr);	// Select best path 
 	// Transform nodes to world coordinates
 	if(req.bend){	
 		if(debug_mode){ cout<<"bending nodes..."<<endl;}
@@ -134,18 +142,6 @@ car_msgs::Trajectory generateMPCmessage(const vector<Path>& path){
 		}
 	}
 
-	// jump:
-	// Check for duplicates
-	// for(int i = 0; i != (tra.x.size()-1); i++){
-	// 	if( ((tra.x[i]-tra.x[i+1])<0.0001)&&((tra.y[i]-tra.y[i+1])<0.0001)){
-	// 		tra.x.erase(tra.x.begin()+i);
-	// 		tra.y.erase(tra.y.begin()+i);
-	// 		tra.theta.erase(tra.theta.begin()+i);
-	// 		tra.v.erase(tra.v.begin()+i);
-	// 		break;
-	// 	}
-	// }
-
 	// Double check
 	for(int i = 0; i != (tra.x.size()-1); i++){
 		if( (tra.x[i]==tra.x[i+1])&&(tra.y[i]==tra.y[i+1])){
@@ -176,18 +172,6 @@ void filterMPCmessage(car_msgs::Trajectory& msg){
 			d=0;
 		}
 	}
-	// Push back last point
-	// bool B1 = msgFiltered.x.back()==msg.x.back();
-	// bool B2 = msgFiltered.y.back()==msg.y.back();
-	// if ( !(B1&B2)){
-	// 	msgFiltered.x.push_back(msg.x.back());
-	// 	msgFiltered.y.push_back(msg.y.back());
-	// 	msgFiltered.theta.push_back(msg.theta.back());
-	// 	msgFiltered.v.push_back(msg.v.back());
-	// 	msgFiltered.a.push_back(msg.a.back());
-	// 	msgFiltered.a_cmd.push_back(msg.a_cmd.back());
-	// 	msgFiltered.d_cmd.push_back(msg.d_cmd.back());
-	// }
 	msg = msgFiltered;
 }
 

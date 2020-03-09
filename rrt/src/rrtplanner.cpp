@@ -9,8 +9,6 @@ using namespace std;
 double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCost, const Node& node, const vector<car_msgs::Obstacle2D> det);
 double d2L(const double& x, const double& y, double S, const vector<double>& Cxy);
 
-
-
 MyRRT::MyRRT(const vector<double>& _goalPose, const vector<double>& _laneShifts, const vector<double>& _Cxy, const bool& _bend):
 	bend(_bend), goalReached(0), sortLimit(10), direction(1), goalPose(_goalPose), laneShifts(_laneShifts), Cxy(_Cxy){
 		ros::param::get("motionplanner/weight_distance",Wcost[0]);
@@ -39,18 +37,17 @@ void MyRRT::addInitialNode(const vector<double>& state){
 }
 
 void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, vector<double>& carState){
-	carState.push_back(0); carState.push_back(0); carState.push_back(0); carState.push_back(0); 
-	assert(carState.size()>=6);
-	// If committed path is empty, initialize tree with reference at (Dla,0)
+	// Add states for logging additional info: waypointid, reference velocity, steer command
+	carState.push_back(0); carState.push_back(0); carState.push_back(0); carState.push_back(0); assert(carState.size()>=6);
+	// If committed path is empty, initialize tree with single point at (x,y) = (Dla,0)
 	if (nodes.size()==0){
 		makeEmptyTree:
-		assert(carState.size()>=6);
 		RRT.addInitialNode(carState);
 		ROS_INFO_STREAM("Initialized empty tree!");
 		return;
 	}
 
-	// Erase passed nodes
+	// Erase nodes behind the vehicle
 	for(auto it = nodes.begin(); it!=nodes.end(); ++it){
 		it->goalReached = 0;
 		if ((it->tra.back()[0])<0){
@@ -95,12 +92,14 @@ void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, vector<
 	ROS_INFO_STREAM("Initialized tree with previous nodes");
 }
 
+// Distance to the lane centerline Cxy
 double d2L(const double& x, const double& y, double S, const vector<double>& Cxy){
 	double Lx = (x - S*Cxy[1] + y*Cxy[1] - Cxy[1]*Cxy[2])/(pow(Cxy[1],2) + 1);
 	double Ly = S + Cxy[2] + (Cxy[1]*(x - S*Cxy[1] + y*Cxy[1] - Cxy[1]*Cxy[2]))/(pow(Cxy[1],2) + 1);
 	return sqrt( pow(Lx-x,2) + pow(Ly-y,2) );
 }
 
+// Get the cost of a node. Used in tree initialization only.
 double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCost, const Node& node, const vector<car_msgs::Obstacle2D> det){
 	double cost = parentCost;
 	for(auto it = node.tra.begin(); it!=node.tra.end(); it++){
@@ -127,7 +126,7 @@ void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<c
 	if (RRT.bend){ 	// Sample on lane
 		// double Lmax = RRT.goalPose[0];
 		// sample = sampleOnLane(Cxy,RRT.laneShifts, Lmax);
-		sample = sampleAroundVehicle(RRT.goalPose);
+		sample = sampleAroundVehicle(RRT.goalPose);	
 	}else{ 			// Sample around vehicle
 		sample = sampleAroundVehicle(RRT.goalPose);
 	}
@@ -153,9 +152,6 @@ void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<c
 				Node node(sim.stateArray.back(), *it, ref,sim.stateArray, sim.costE + RRT.tree[*it].costE, sim.costS + RRT.tree[*it].costS, sim.goalReached);
 				RRT.addNode(node); 	node_added = true;
 				break;
-			// }else{
-				// fail_collision++;
-			// }
 		}
 	}; 
 	// #### GOAL BIASED EXPANSION ####
@@ -167,12 +163,8 @@ void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<c
 		
 		// If trajectory is admissible and collision free, add it to the tree
 		if(sim_goal.endReached||sim_goal.goalReached){
-			// if(!checkCollision(ptrPub,sim_goal.stateArray,det,RRT.tree.front().state)){
-				Node node_goal(sim_goal.stateArray.back(), RRT.tree.size()-1, ref_goal, sim_goal.stateArray,sim_goal.costE + RRT.tree.back().costE, sim_goal.costS + RRT.tree.back().costS, sim_goal.goalReached);
-				RRT.addNode(node_goal);
-			// }else{
-				// fail_collision++;
-			// }
+			Node node_goal(sim_goal.stateArray.back(), RRT.tree.size()-1, ref_goal, sim_goal.stateArray,sim_goal.costE + RRT.tree.back().costE, sim_goal.costS + RRT.tree.back().costS, sim_goal.goalReached);
+			RRT.addNode(node_goal);
 		}
 	}
 };
@@ -187,17 +179,17 @@ void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<c
 // }
 
 
-// Uniform sampling around the vehicle
+// Uniform sampling around the vehicle. Sampling is done in a rectangle aligned with the line that connects (x,y)_car and (x,y)_goal
 geometry_msgs::Point sampleAroundVehicle(const vector<double> goalPose){
-	double dGoal = sqrt( pow(goalPose[0],2) + pow(goalPose[1],2) );
-	double goalHeading = atan2( goalPose[1], goalPose[0] );
-	double latMin {-7}, latMax{7};
+	double dGoal = sqrt( pow(goalPose[0],2) + pow(goalPose[1],2) );		// Distance to the goal
+	double goalHeading = atan2( goalPose[1], goalPose[0] );				// Heading (x,y)_car to (x,y)_world
+	double latMin {-7}, latMax{7};										// Width of the box
 	
 	geometry_msgs::Point sample;	
-	double rLong = static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(dGoal+10)));
-	double rLat = latMin + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(latMax-latMin)));
+	double rLong = static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(dGoal+10)));				// Random long. coordinate
+	double rLat = latMin + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(latMax-latMin))); // Random lat. coordinate
 
-	sample.x = rLong*cos(goalHeading) + rLat*cos(goalHeading+pi/2);
+	sample.x = rLong*cos(goalHeading) + rLat*cos(goalHeading+pi/2);		// Rotate the coordinates to align with goal heading
 	sample.y = rLong*sin(goalHeading) + rLat*sin(goalHeading+pi/2);
 
 	if(debug_mode){cout<<"Generated sample: x="<<sample.x<<" y="<<sample.y<<endl;}
@@ -254,6 +246,7 @@ vector<int> sortNodesExplore(const MyRRT& rrt, const geometry_msgs::Point& sampl
 vector<int> sortNodesOptimize(const MyRRT& rrt, const geometry_msgs::Point& sample){
 	vector<pair<int,float>> dVector;
 	for(int index = 0; index != rrt.tree.size(); index++){
+		// Cost = cost_parent + dubins distance
 		dVector.push_back(make_pair(index,rrt.tree[index].costE + dubinsDistance(sample, rrt.tree[index], rrt.direction)));
 	};
 	sort(dVector.begin(),dVector.end(),[](const pair<int,float>& a, const pair<int,float>& b){return a.second< b.second;});

@@ -35,24 +35,28 @@ int main( int argc, char** argv ){
 	// Initialize node
     ros::init(argc, argv, "mission_planner_node");
 	ros::NodeHandle nh;
+
     // Initialize communication class
     MsgManager msgManager;
-    // Initialize message subscribers
+
+    // Subscribe to car state message. Used in motion request. State = [x,y,theta,delta,v,a]
     ros::Subscriber subState = nh.subscribe("/carstate",0,&MsgManager::stateCallback, &msgManager);
-    // ros::Subscriber subGoal = nh.subscribe("/move_base_simple/goal",1000,&MsgManager::goalCallback, &msgManager);
+
+    // Subscribe to lane detection message. Used for bending only. Motion planner also works without lane det.
     ros::Subscriber subLane = nh.subscribe("/road/coefficients",1000,&MsgManager::laneCallback, &msgManager);
-    // ros::Subscriber subMP = nh.subscribe("/motionplanner/response",0,&MsgManager::motionCallback, &msgManager);
-    // Initialize message publishers
+    
+    // Initialize the publisher that sends a request to the motion planner
     ros::Publisher pubMP = nh.advertise<car_msgs::MotionRequest>("/motionplanner/request",0);
     msgManager.ptrPubMP = &pubMP;
     ros::Rate rate(5);
 
-    // Define simulation reset objects
+    // These service clients are used for automatically resetting Gazebo and the motion planner
     ros::ServiceClient reset_planner_client_    = nh.serviceClient<car_msgs::resetplanner>("motionplanner/reset");
     ros::ServiceClient reset_simulation_client_ = nh.serviceClient<std_srvs::Empty>("/gazebo/reset_world");
     ros::ServiceClient reset_ekf_client_= nh.serviceClient<robot_localization::SetPose>("/set_pose");
 
-    // Give control to ROS for goal definition
+    // Get parameter from server. Replanning means that the path is updated on the go.
+    // Disabling replanning means motion is planned a single time only.
     bool doReplanning;
     ros::param::get("/motionplanner/replan",doReplanning);
     
@@ -64,10 +68,12 @@ int main( int argc, char** argv ){
             if (goalReachedCheck(msgManager.carPose)){
                 ROS_WARN_STREAM("Goal reached! Resetting simulation...");
                 
+                // Prepare reset messages
                 std_srvs::Empty reset_msg_;
                 robot_localization::SetPose reset_pose_msg_;
                 car_msgs::resetplanner reset_planner_msg_;
 
+                // When goal is reached, reset the simulation
                 reset_simulation_client_.call(reset_msg_);
                 reset_ekf_client_.call(reset_pose_msg_);
                 reset_planner_client_.call(reset_planner_msg_);

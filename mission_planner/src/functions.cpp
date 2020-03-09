@@ -17,7 +17,7 @@ struct MsgManager{
         goalReceived =true;
     }
     MsgManager(): confirmed(0), goalReceived(0){
-        initializeGoal();
+        //initializeGoal();
         carPose.push_back(0); carPose.push_back(0); carPose.push_back(0); carPose.push_back(0); 
     }
     vector<double> carPose;
