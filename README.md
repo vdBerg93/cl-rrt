@@ -49,7 +49,7 @@ This will increase the number of nodes explored per second.
 catkin_make -DCMAKE_BUILD_TYPE=Release
 ```
 
-## Running the tests
+## Running the planner
 ```
 roslaunch rrt rrt.launch
 ```
