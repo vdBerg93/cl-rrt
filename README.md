@@ -18,8 +18,7 @@ This package contains:
 ### Installing Motion planner
 
 ```
-mkdir ~/catkin_ws/src
-cd ~/catkin_ws/src
+mkdir ~/catkin_ws/src && cd ~/catkin_ws/src
 git clone git@github.com:vdBerg93/cl-rrt.git
 cd .. && catkin_make
 source devel/setup.bash
