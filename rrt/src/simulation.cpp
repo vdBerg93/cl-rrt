@@ -67,11 +67,22 @@ void Simulation::propagate(const MyRRT& RRT, Controller control, const MyReferen
 		x[9] = ctrlCmd.dc;		// Control logging
 		stateArray.push_back(x);									// Add state to statearray
 		// ****** CHECK COLLISION *****
-		double Dobs = checkObsDistance(stateArray.back(), RRT.det, RRT.carState);
-		if (Dobs==0){ 	
-			endReached = false; 	fail_collision++;	return;
+		ROS_WARN_STREAM("In simulation.cpp -> Simulation::propagate: Adjust the collision check");
+		/********************************
+		HOW TO ADJUST COLLISION CHECK
+		*********************************
+		1. Make sure to feed occupancy grid to simulation as follows: 
+			- Make callback function to occupancy grid in motionplanner object
+			- Feed the obstacle grid to expand_tree
+			- Feed the obstacle grid to Simulation::sim(....)
+			- Feed the obstacle grid to Simulation::propagate(...)
+			- Feed the grid to myCollisionCheck(...) below
+		2. Adjust myCollisionCheck() in collisioncheck.cpp to use obstacle grid
+		*/
+		if (myCollisionCheck()){
+			endReached = false; fail_collision++; return;
 		}
-		assert( (Dobs>=0) && "Negative distance to obstacle!");
+	
 
 		// ****** UPDATE COSTS ********
 		costE += x[4]*sim_dt;

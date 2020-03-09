@@ -1,28 +1,6 @@
 #include "rrt/transformations.h"
 #include "transformations.cpp"
 
-// Get updated obstacles from obstacle detection node
-// Replace this function with obstaclegrid
-bool MotionPlanner::updateObstacles(){
-	ROS_WARN_STREAM("In motionplanner: adjust MotionPlanner::updateObstacles() with occupancy grid message");
-    car_msgs::getobstacles srv;
-    (*clientPtr).call(srv);
-	det = srv.response.obstacles;
-}
-
-// State callback message
-void MotionPlanner::updateState(car_msgs::State msg){
-	// state = [x,y,theta,delta,v,a]
-	ROS_WARN_STREAM("In MotionPlanner::updateState: edit state message to fit Prius")
-	state.clear(); 	state.insert(state.begin(), msg.state.begin(), msg.state.end());
-	assert(state.size()==6);
-}
-
-
-// Clear the path stored in the motion planner
-bool MotionPlanner::resetPlanner(car_msgs::resetplanner::Request& req, car_msgs::resetplanner::Response& resp){
-	motionplan.clear(); 	return true;
-}
 
 //*****************************************
 //    motion request callback function (MAIN)
@@ -37,45 +15,22 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	vector<double> carPose = transformStateToLocal(worldState);				// State in car coordinates
 	updateLookahead(carPose[4]);	updateReferenceResolution(carPose[4]); 	// Update planner parameters
 	vmax = req.vmax; vgoal = req.goal[3];									// Update globals
-	
 	updateObstacles();														// Update obstacles
+	
 	// ROS_INFO_STREAM("Considering "<<det.size()<<" obstacles.");
 
-	// Determine an upperbound of the lateral acceleration introduced by bending the path
-	if (req.Cxy.size()>0){
-		if(debug_mode){cout<<"Cxy=["<<req.Cxy[0]<<", "<<req.Cxy[1]<<", "<<req.Cxy[2]<<endl;}
-		ay_road_max = abs(pow(worldState[4],2)*(2*req.Cxy[0]));
-	}else{
-		ay_road_max = 0;
-	}
-
-	//******************************************
-	// Transforming last planner path and obstacle positions
-	//******************************************
-	transformNodesWorldToCar(bestNodes,worldState);
-	if(req.bend){	
-		for(auto it = det.begin(); it!=det.end(); ++it){
-			// Convert the obstacles
-			
-			transformPoseCarToRoad(it->obb.center.x,it->obb.center.y,it->obb.center.theta,req.Cxy,req.Cxs);
-			transformVelocityToRoad(it->obb.center.x, it->obb.center.y,it->vel.linear.x, it->vel.linear.y, req.Cxy);
-		}
-		transformNodesCarToRoad(bestNodes,worldState, req.Cxy, req.Cxs, veh);
-		transformPoseCarToRoad(req.goal[0],req.goal[1],req.goal[2],req.Cxy,req.Cxs);
-	}
-	
-	// Initialize RRT planner
-	MyRRT RRT(req.goal,req.laneShifts,req.Cxy, req.bend);	
-	
-	// UPDATE OBSTACLE DETECTIONS and car state
-	RRT.det = det; RRT.carState = carPose; 
+	transformNodesWorldToCar(bestNodes,worldState);			// Transform last path to new coordinate frame
+	MyRRT RRT(req.goal,req.laneShifts,req.Cxy, req.bend);	// Initialize RRT planner
+	RRT.det = det; RRT.carState = carPose; 					// UPDATE OBSTACLE DETECTIONS and car state
 
 	ROS_INFO_STREAM("Initializing tree...");
+	
 	if (!commit_path){
 		bestNodes.clear();
 	}
 
 	initializeTree(RRT,veh,bestNodes,carPose); assert(RRT.tree.size()>0);	
+	
 	// for(auto it = RRT.tree.begin(); it!=RRT.tree.end(); it++){	showNode(*it);	}		// Remove comment to print nodes
 
 	//*******************************************
@@ -95,10 +50,6 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	if (!commit_path){	bestNodes.clear();	}
 	bestNodes = extractBestPath(RRT.tree,pubPtr);	// Select best path 
 	// Transform nodes to world coordinates
-	if(req.bend){	
-		if(debug_mode){ cout<<"bending nodes..."<<endl;}
-		transformNodesRoadToCar(bestNodes,worldState, req.Cxy, req.Cxs, veh);
-	}
 	if(debug_mode){ cout<<"transforming nodes to global..."<<endl;}
 	transformNodesCarToworld(bestNodes,worldState);
 	// No solution found
@@ -113,16 +64,39 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 		}
 	}
 	vector<Path> plan = convertNodesToPath(bestNodes);
-	// publishPlan(plan); 
+
 	// Filtered message for MPC controller
 	car_msgs::Trajectory msg = generateMPCmessage(plan);
-	filterMPCmessage(msg);
+	filterMPCmessage(msg);			// Reduce number of waypoints in path message. Space x meters apart.
 	if(msg.x.size()>=3){
 		pubMPC->publish(msg);
 		publishPathToRviz(plan,pubPtr);	
 	}
 
 	ROS_INFO_STREAM("Replied to request..."<<endl<<"-------------------------");
+}
+
+// Get updated obstacles from obstacle detection node
+// Replace this function with obstaclegrid
+bool MotionPlanner::updateObstacles(){
+	ROS_WARN_STREAM("In motionplanner: adjust MotionPlanner::updateObstacles() with occupancy grid message");
+    car_msgs::getobstacles srv;
+    (*clientPtr).call(srv);
+	det = srv.response.obstacles;
+}
+
+// State callback message
+void MotionPlanner::updateState(car_msgs::State msg){
+	// state = [x,y,theta,delta,v,a]
+	ROS_WARN_STREAM("In MotionPlanner::updateState: edit state message to fit Prius");
+	state.clear(); 	state.insert(state.begin(), msg.state.begin(), msg.state.end());
+	assert(state.size()==6);
+}
+
+
+// Clear the path stored in the motion planner
+bool MotionPlanner::resetPlanner(car_msgs::resetplanner::Request& req, car_msgs::resetplanner::Response& resp){
+	motionplan.clear(); 	return true;
 }
 
 // Prepare motion response message

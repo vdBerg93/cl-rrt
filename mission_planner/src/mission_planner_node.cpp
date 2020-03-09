@@ -22,13 +22,27 @@ using namespace std;
 #include <std_srvs/Empty.h>
 #include <robot_localization/SetPose.h>
 
-const vector<double>& initialGoal {50,0,0,0};
 int simCount = 0;
-
 #include "functions.h"
 #include "functions.cpp"
-bool goalReachedCheck(const vector<double>& carState);
 
+// Check if goal is reached
+bool goalReachedCheck(const vector<double>& carState, const vector<double>& goalPose){
+    const double goal_radius = 5;
+    return ( sqrt( pow(carState[0]-goalPose[0],2) + pow(carState[1]-goalPose[1],2) ) <= goal_radius);
+}
+
+// Reset Gazebo, the localization and the motion planner
+void resetSimulation(ros::ServiceClient& reset_simulation_client_, ros::ServiceClient& reset_ekf_client_, ros::ServiceClient& reset_planner_client_){
+    // Empty reset messages
+    std_srvs::Empty reset_msg_;
+    robot_localization::SetPose reset_pose_msg_;
+    car_msgs::resetplanner reset_planner_msg_;
+    // Call reset clients
+    reset_simulation_client_.call(reset_msg_);
+    reset_ekf_client_.call(reset_pose_msg_);
+    reset_planner_client_.call(reset_planner_msg_);
+}
 
 
 int main( int argc, char** argv ){	
@@ -41,14 +55,13 @@ int main( int argc, char** argv ){
 
     // Subscribe to car state message. Used in motion request. State = [x,y,theta,delta,v,a]
     ros::Subscriber subState = nh.subscribe("/carstate",0,&MsgManager::stateCallback, &msgManager);
+    // Subscribe to Rviz goal
+    ros::Subscriber subRviz = nh.subscribe("/move_base_simple/goal", 0, &MsgManager::goalCallback, &msgManager);
 
-    // Subscribe to lane detection message. Used for bending only. Motion planner also works without lane det.
-    ros::Subscriber subLane = nh.subscribe("/road/coefficients",1000,&MsgManager::laneCallback, &msgManager);
-    
     // Initialize the publisher that sends a request to the motion planner
     ros::Publisher pubMP = nh.advertise<car_msgs::MotionRequest>("/motionplanner/request",0);
     msgManager.ptrPubMP = &pubMP;
-    ros::Rate rate(5);
+    ros::Rate rate(5);  // Used to configure motion planning frequency (Also adjust time limit in planner)
 
     // These service clients are used for automatically resetting Gazebo and the motion planner
     ros::ServiceClient reset_planner_client_    = nh.serviceClient<car_msgs::resetplanner>("motionplanner/reset");
@@ -65,20 +78,10 @@ int main( int argc, char** argv ){
         if (msgManager.goalReceived){
             msgManager.sendMotionRequest();
 
-            if (goalReachedCheck(msgManager.carPose)){
+            if (goalReachedCheck(msgManager.carPose, msgManager.goalW)){
                 ROS_WARN_STREAM("Goal reached! Resetting simulation...");
-                
-                // Prepare reset messages
-                std_srvs::Empty reset_msg_;
-                robot_localization::SetPose reset_pose_msg_;
-                car_msgs::resetplanner reset_planner_msg_;
-
-                // When goal is reached, reset the simulation
-                reset_simulation_client_.call(reset_msg_);
-                reset_ekf_client_.call(reset_pose_msg_);
-                reset_planner_client_.call(reset_planner_msg_);
-                simCount++;
-                ROS_ERROR_STREAM("Simulation count= "<<simCount);
+                resetSimulation(reset_simulation_client_, reset_ekf_client_, reset_planner_client_);
+                ROS_ERROR_STREAM("Simulation count= "<<(++simCount));
             }
         }else{
             ROS_INFO_STREAM_THROTTLE(1,"Waiting for goal pose from Rviz...");
@@ -87,11 +90,6 @@ int main( int argc, char** argv ){
         rate.sleep();
     }
 }
-
-bool goalReachedCheck(const vector<double>& carState){
-    return ( sqrt( pow(carState[0]-50,2) + pow(carState[1]-50,2) ) <= 10);
-}
-
 
 
 
