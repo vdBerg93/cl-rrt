@@ -1,4 +1,4 @@
-# CA-CL-RRT
+# CL-RRT
 Closed-Loop Rapidly-exploring Random Tree, a ROS C++ implementation.
 [Kuwata et al., 2009, "Real-time Motion Planning with Applications to Autonomous Urban Driving"](http://acl.mit.edu/papers/KuwataTCST09.pdf)
 
@@ -36,7 +36,7 @@ The main function of the motion planner is located in motionplanner.cpp and is c
 
 
 ### Adding collision detection
-Collision detection is done *during* closed-loop prediction. Collision is check after every simulation step. When the collision detection fails, closed-loop prediction is aborted and returns fail.
+Collision detection is done *during* closed-loop prediction. Collision is checked after every simulation step. When the collision detection fails, closed-loop prediction is aborted and returns fail.
 
 The motion planner object keeps track of the obstacles. They are updated with a service at the start of each motion query with the updateObstacles() function. To enable collision detection, make sure to feed the obstacles through the following pipeline:
 Motionplanner::planmotion(...)->expand_tree(...)-> Simulation sim(...) --> Simulation::Propagate(...)
@@ -50,6 +50,9 @@ Both the mission- and motion planners are configured to use a 5 Hz update rate b
 If you want to change the update rate, make sure to adjust the following:
 a) The rate of the mission planner node
 b) The time limit in the expand_tree(...) loop in RRT->motionplanner
+
+### Adjusting the vehicle model
+The vehicle is modeled with a Kinematic bicycle model that is extended with understeer and actuator dynamics. The vehicle parameters can be adjusted in include/rrt/vehicle.h
 
 ### Improving performance
 To improve the performance of the planner, make sure to compile in release mode.
