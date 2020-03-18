@@ -2,7 +2,7 @@
     COLLISION DETECTION FUNCTIONS
 --------------------------------------------*/
 
-// Collision check. return true if collision.
-bool myCollisionCheck(){
-    return false;
+// Return distance to closest obstacle
+double checkObsDistance(const vector<double>& carState){
+    return 100;
 }

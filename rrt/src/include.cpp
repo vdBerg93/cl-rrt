@@ -38,7 +38,7 @@
 #include "reference.cpp"
 #include "rrtplanner.cpp"
 #include "controller.cpp"
-#include "simulation.cpp"
 #include "collisioncheck.cpp"
+#include "simulation.cpp"
 #include "testers.cpp"
 #include "motionplanner.cpp"
