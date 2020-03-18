@@ -79,12 +79,11 @@ void Simulation::propagate(const MyRRT& RRT, Controller control, const MyReferen
 			- Feed the grid to myCollisionCheck(...) below
 		2. Adjust myCollisionCheck() in collisioncheck.cpp to use obstacle grid
 		*/
-		bool COL = myCollisionCheck(x);	// Feed grid
-		if (COL){
+		// bool COL = myCollisionCheck(x);	
+		double Dobs = checkObsDistance(x); // Feed grid
+		if (Dobs==0){
 			endReached = false; fail_collision++; return;
 		}
-	
-		double Dobs = 0;
 
 		// ****** UPDATE COSTS ********
 		costE += x[4]*sim_dt;

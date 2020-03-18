@@ -1,5 +1,5 @@
 #include <limits>
-#include "rrt/collision.h"
+// #include "rrt/collision.h"
 #include "rrt/rrtplanner.h"
 #include "rrt/simulation.h"
 #include "rrt/transformations.h"
@@ -71,7 +71,9 @@ void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, vector<
 	// Check collisions, if collision initialize with empty tree
 	for(auto it = nodes.begin(); it!=nodes.end(); ++it){
 		for(int i = 0; i!=it->tra.size(); i++){
-			double Dobs = checkObsDistance(it->tra[i], RRT.det, RRT.carState);
+			// double Dobs = checkObsDistance(it->tra[i], RRT.det, RRT.carState);
+			double Dobs = checkObsDistance(RRT.carState);
+			ROS_WARN_STREAM(" in initializeTree: udpate Dobs function!");
 			if(Dobs==0){
 				goto makeEmptyTree;
 			}
@@ -103,7 +105,9 @@ double d2L(const double& x, const double& y, double S, const vector<double>& Cxy
 double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCost, const Node& node, const vector<car_msgs::Obstacle2D> det){
 	double cost = parentCost;
 	for(auto it = node.tra.begin(); it!=node.tra.end(); it++){
-		double Dobs = checkObsDistance(*it, RRT.det, RRT.carState);
+		// double Dobs = checkObsDistance(*it, RRT.det, RRT.carState);
+		double Dobs = checkObsDistance(RRT.carState);
+		ROS_WARN_STREAM("in getNodeCost: update obstacle distance fcn!");
 		double kappa = tan((*it)[3])/veh.L;								// Vehicle path curvature
 		cost += RRT.Wcost[0]*(*it)[4]*sim_dt + RRT.Wcost[1]*abs(kappa) + RRT.Wcost[2]*exp(-RRT.Wcost[3]*Dobs);
 		if (RRT.bend){
