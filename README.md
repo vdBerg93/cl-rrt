@@ -1,3 +1,5 @@
+# *** ALSO BRANCH AVAILABLE WITH PERCEPTION AND CAR SIMULATOR ***
+
 # CL-RRT
 Closed-Loop Rapidly-exploring Random Tree, a ROS C++ implementation.
 [Kuwata et al., 2009, "Real-time Motion Planning with Applications to Autonomous Urban Driving"](http://acl.mit.edu/papers/KuwataTCST09.pdf)
