@@ -49,6 +49,38 @@ catkin_make
 4. (optional) start lmpcc with rqt_reconfigure, rosrun rqt_reconfigure rqt_reconfigure
 
 
+## Description of the algorithm structure
+A mission planner is required to define the motion queries for the planner. The mission planner must receive the vehicle state (to be written by the user) and a global goal (can be drawn in Rviz interface). 
+
+The main function of the motion planner is located in motionplanner.cpp and is called MotionPlanner::planMotion. A brief summary of this function:
+1. Update the planner inputs and convert them to car coordinate frame
+2. Initialize the tree with the previous path
+3. Expand the tree while t<t_max (see article hyperlink at top of readme for pseudocode)
+4. Extract the best path
+5. Do some post processing and publish the planned path
+
+
+### Adding collision detection
+Collision detection is done *during* closed-loop prediction. Collision is checked after every simulation step. When the collision detection fails, closed-loop prediction is aborted and returns fail.
+Obstacles are modeled as 2-D Oriented Bounding Boxes. Velocities are estimated and provided to the planner.
+They are updated with a service at the start of each motion query with the updateObstacles() function. 
+
+
+### Adjusting the planning frequency
+Both the mission- and motion planners are configured to use a 5 Hz update rate by default. 
+If you want to change the update rate, make sure to adjust the following:
+a) The rate of the mission planner node
+b) The time limit in the expand_tree(...) loop in RRT->motionplanner
+
+### Adjusting the vehicle model
+The vehicle is modeled with a Kinematic bicycle model that is extended with understeer and actuator dynamics. The vehicle parameters can be adjusted in include/rrt/vehicle.h
+
+### Improving performance
+To improve the performance of the planner, make sure to compile in release mode.
+This will increase the number of nodes explored per second.
+```
+catkin_make -DCMAKE_BUILD_TYPE=Release
+```
 ## Authors
 
 * **Berend van den Berg** - [vdBerg93](https://github.com/vdBerg93)
