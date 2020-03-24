@@ -20,6 +20,8 @@ This package contains:
 * prius_simulator package
 * (optional) LMPCC, lmpcc_obstacle_feed
 * (optional) pedsim_ros
+* vision_msgs
+* robot_localization
 
 ### Installing Motion planner
 
