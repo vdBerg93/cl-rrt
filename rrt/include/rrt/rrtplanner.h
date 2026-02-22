@@ -92,11 +92,13 @@ bool feasibleGoalBias(const MyRRT& rrt);
 float dubinsDistance(geometry_msgs::Point S, Node N, int dir);
 visualization_msgs::Marker createStateMsg(int ID, const vector<vector<double>> T, bool goalReached);
 visualization_msgs::Marker createEmptyMsg();
+vector<Node> extractBestPath(vector<Node> tree, ros::Publisher* ptrPub);
 
 
 // Reference generation functions
 void generateVelocityProfile(MyReference& ref, const double& a0, const int& IDwp, const double& v0, const double& vmax, const vector<double>& goal, bool GB);
 MyReference getReference(geometry_msgs::Point sample, Node node, signed int dir);
+MyReference getGoalReference(const Vehicle& veh, Node node, vector<double> goalPose);
 vector<double> getCoefficients(const double& Sf, const double& v0, const double& vf, const double& a0, const double& af);
 double getVelocity(const double& v0, const vector<double>& coef, const double& t);
 vector<double> getVelocityVector(const double& v0, const vector<double>& coef, const vector<double>& Tpath);
@@ -108,13 +110,14 @@ void showVelocityProfile(const MyReference& ref);
         SIMPLE DATA OPERATIONS
 -----------------------------------------*/
 // Add a node to the tree
-void MyRRT::addNode(Node node){
+inline void MyRRT::addNode(Node node){
 	tree.push_back(node);
 }
 
 // Add multiple nodes to the tree
-void MyRRT::addNodes(vector<Node> nodes){
+inline void MyRRT::addNodes(vector<Node> nodes){
 	for(int index = 0; index != nodes.size(); index++){
+		tree.push_back(nodes[index]);
 	};
 }
 

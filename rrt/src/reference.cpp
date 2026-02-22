@@ -2,8 +2,8 @@
 /* --------------------------------------
 	REFERENCE GENERATION
 ---------------------------------------*/
-#include "rrt/rrtplanner.h"
-#include "ros/ros.h"
+#include "rrt/headers.h"
+#include "rrt/globals.h"
 
 // Generate a linear reference paths
 MyReference getReference(geometry_msgs::Point sample, Node node, signed int dir){

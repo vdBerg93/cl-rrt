@@ -23,7 +23,8 @@ int fail_collision{0};
 int fail_acclimit{0};
 int sim_count{0};
 
-#include "include.cpp"
+#include "rrt/headers.h"
+#include "rrt/globals.h"
 
 void updateParameters(){
 	// Get parameters from server

@@ -1,5 +1,5 @@
-#include "rrt/transformations.h"
-#include "transformations.cpp"
+#include "rrt/headers.h"
+#include "rrt/globals.h"
 
 
 //*****************************************
@@ -79,7 +79,7 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 // Get updated obstacles from obstacle detection node
 // Replace this function with obstaclegrid
 bool MotionPlanner::updateObstacles(){
-	ROS_WARN_STREAM("In motionplanner: adjust MotionPlanner::updateObstacles() with occupancy grid message");
+	ROS_WARN_STREAM_ONCE("In motionplanner: adjust MotionPlanner::updateObstacles() with occupancy grid message");
     car_msgs::getobstacles srv;
     (*clientPtr).call(srv);
 	det = srv.response.obstacles;
@@ -88,7 +88,7 @@ bool MotionPlanner::updateObstacles(){
 // State callback message
 void MotionPlanner::updateState(car_msgs::State msg){
 	// state = [x,y,theta,delta,v,a]
-	ROS_WARN_STREAM("In MotionPlanner::updateState: edit state message to fit Prius");
+	ROS_WARN_STREAM_ONCE("In MotionPlanner::updateState: edit state message to fit Prius");
 	state.clear(); 	state.insert(state.begin(), msg.state.begin(), msg.state.end());
 	assert(state.size()==6);
 }
@@ -104,6 +104,10 @@ car_msgs::Trajectory generateMPCmessage(const vector<Path>& path){
 	car_msgs::Trajectory tra;
 	for(auto it = path.begin(); it!=path.end(); ++it){
 		for(int i = 1; i<it->tra.size(); i++){
+			// Skip states where position hasn't advanced (occurs when v=0: dx[0]=v*cos=0, dx[1]=v*sin=0)
+			if(!tra.x.empty() && tra.x.back()==it->tra[i][0] && tra.y.back()==it->tra[i][1]){
+				continue;
+			}
 			tra.x.push_back(it->tra[i][0]);
 			tra.y.push_back(it->tra[i][1]);
 			tra.theta.push_back(it->tra[i][2]);
@@ -113,14 +117,6 @@ car_msgs::Trajectory generateMPCmessage(const vector<Path>& path){
 			tra.a.push_back(it->tra[i][5]);
 			tra.a_cmd.push_back(it->tra[i][8]);
 			tra.d_cmd.push_back(it->tra[i][9]);
-		}
-	}
-
-	// Double check
-	for(int i = 0; i != (tra.x.size()-1); i++){
-		if( (tra.x[i]==tra.x[i+1])&&(tra.y[i]==tra.y[i+1])){
-			ROS_ERROR_STREAM("Still duplicates in message! Fix this code!");
-			break;
 		}
 	}
 

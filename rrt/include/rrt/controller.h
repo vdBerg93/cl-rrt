@@ -39,4 +39,7 @@ void updateLookahead(double v);
 
 void updateReferenceResolution(double v);
 
+// Longitudinal lookahead index (defined in controller.cpp)
+extern int LAlong;
+
 #endif

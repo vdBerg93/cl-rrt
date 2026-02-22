@@ -1,3 +1,6 @@
+#ifndef HEADERS_H
+#define HEADERS_H
+
 // Include STDLIB headers
 #include <ros/ros.h>
 #include <iostream>
@@ -18,27 +21,22 @@
 #include "car_msgs/getobstacles.h"
 #include "car_msgs/MotionRequest.h"
 #include "car_msgs/MotionResponse.h"
+#include "car_msgs/resetplanner.h"
 #include "car_msgs/State.h"
 #include "car_msgs/Trajectory.h"
 #include "car_msgs/MotionPlan.h"
 #include "car_msgs/Obstacle2D.h"
-
-// Include header files
-#include "rrt/functions.h"
-#include "rrt/vehicle.h"
-#include "rrt/rrtplanner.h"
-#include "rrt/simulation.h"
-#include "rrt/collision.h"
-#include "rrt/controller.h"
-#include "rrt/datatypes.h"
-#include "rrt/motionplanner.h"
 #include "car_msgs/Reference.h"
- 
-// Include classes
-#include "reference.cpp"
-#include "rrtplanner.cpp"
-#include "controller.cpp"
-#include "simulation.cpp"
-#include "collisioncheck.cpp"
-#include "testers.cpp"
-#include "motionplanner.cpp"
+
+// Include header files (order matters: each header depends on those above it)
+#include "rrt/functions.h"       // no rrt deps
+#include "rrt/vehicle.h"         // no rrt deps
+#include "rrt/datatypes.h"       // no rrt deps
+#include "rrt/collision.h"       // no rrt deps
+#include "rrt/rrtplanner.h"      // defines MyReference, Node, MyRRT
+#include "rrt/controller.h"      // needs MyReference
+#include "rrt/simulation.h"      // needs Controller, MyRRT
+#include "rrt/motionplanner.h"   // needs MyReference, Node -> defines Path
+#include "rrt/transformations.h" // needs Path, Node, MyReference
+
+#endif

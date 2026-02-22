@@ -21,6 +21,11 @@ void transformPathWorldToCar(vector<Path>& path, const vector<double>& carPose);
 void transformPathCarToRoad(vector<Path>& path,const vector<double>& Cxy, const vector<double>& Cxs, const Vehicle& veh);
 void transformPathRoadToCar(vector<Path>& path, const vector<double>& Cxy, const vector<double>& Cxs, const Vehicle& veh);
 void transformPathCarToWorld(vector<Path>& path, const vector<double>& worldState);
+// Node transformations
+void transformNodesWorldToCar(vector<Node>& nodes, const vector<double> carState);
+void transformNodesCarToworld(vector<Node>& nodes, const vector<double> carState);
+void transformNodesRoadToCar(vector<Node>& nodes, const vector<double> carState, const vector<double>& Cxy, const vector<double> Cxs, const Vehicle& veh);
+void transformNodesCarToRoad(vector<Node>& nodes, const vector<double> carState, const vector<double>& Cxy, const vector<double>& Cxs, const Vehicle& veh);
 
 void rotateVelocityVector(double& Vx, double& Vy, const vector<double>& carPose);
 void transformVelocityToRoad(const double& x, const double& y, double& Vx, double& Vy, const vector<double>& Cxy);

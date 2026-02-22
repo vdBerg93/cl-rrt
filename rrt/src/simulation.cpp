@@ -1,8 +1,5 @@
-#include <cmath>
-
-#include "rrt/controller.h"
-#include "rrt/simulation.h"
-#include "rrt/controller.h"
+#include "rrt/headers.h"
+#include "rrt/globals.h"
 
 void enforceConstraints(const double& min, const double& max, double& val){
     val = std::max(std::min(val,max),min);
@@ -25,12 +22,12 @@ state_type VehicleODE(ControlCommand& ctrl, state_type& x, const Vehicle& veh){
 };
 
 void IntegrateEuler(ControlCommand& ctrl, state_type& x, state_type& dx, double& dt, const Vehicle& veh){
-	for(int i = 0; i<= x.size(); i++){
+	for(int i = 0; i < 7; i++){   // dx has 7 elements (VehicleODE output); x[7..9] are logging slots filled by caller
 		x[i] = x[i] + dx[i]*dt;
 	};
 	// Constraints
 	enforceConstraints(-veh.dmax,veh.dmax,x[3]);
-	enforceConstraints(veh.amin, veh.amax, dx[5]);
+	enforceConstraints(veh.amin, veh.amax, x[5]);   // clamp acceleration state, not jerk
 };
 
 Simulation::Simulation(	const MyRRT& RRT, const vector<double>& state, MyReference& ref, const Vehicle& veh, 
@@ -67,7 +64,7 @@ void Simulation::propagate(const MyRRT& RRT, Controller control, const MyReferen
 		x[9] = ctrlCmd.dc;		// Control logging
 		stateArray.push_back(x);									// Add state to statearray
 		// ****** CHECK COLLISION *****
-		ROS_WARN_STREAM("In simulation.cpp -> Simulation::propagate: Adjust the collision check");
+		ROS_WARN_STREAM_ONCE("In simulation.cpp -> Simulation::propagate: Adjust the collision check");
 		/********************************
 		HOW TO ADJUST COLLISION CHECK
 		*********************************
@@ -112,7 +109,7 @@ void Simulation::propagate(const MyRRT& RRT, Controller control, const MyReferen
 
 		// Stop simulation when end of reference is reached and velocity < terminate velocity
 		double Verror = (x[4]-ref.v.back());
-		if (control.endreached&&abs(Verror<0.1)){
+		if (control.endreached && abs(Verror) < 0.1){
 			if(wasNearGoal&&debug_sim){
 				ROS_WARN_STREAM("Was near goal but did not reach! Egoalvel= "<<Verror<<", Eprofile="<<(x[4]-ref.v[control.IDwp]));
 				ROS_WARN_STREAM("Dist2goal= "<<dist_to_goal<<" head error= "<<goal_heading_error<<" dla= "<<ctrl_dla);

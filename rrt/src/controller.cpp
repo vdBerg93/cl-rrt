@@ -1,22 +1,24 @@
 // Vehicle controller
-#include "rrt/simulation.h"
-#include "rrt/controller.h"
-#include "rrt/rrtplanner.h"
-#include "rrt/vehicle.h"
-#include "rrt/datatypes.h"
-#include <boost/range/irange.hpp>
+#include "rrt/headers.h"
+#include "rrt/globals.h"
 
 
 //*******************************
 // CONTROLLER CLASS FUNCTIONS 
 //*******************************
+
+/** Update controller lookahead distance
+ * @param v Current velocity
+*/
 void updateLookahead(double v){
 	double dla_c = ctrl_mindla - ctrl_tla*ctrl_dlavmin; 
 	ctrl_dla = std::max(ctrl_mindla,dla_c+ctrl_tla*std::abs(v));
 }
 
+/** Update the reference resolution
+ * @param v Current velocity
+ */
 void updateReferenceResolution(double v){
-    // double ref_int{0.2}, ref_mindist{0.2};
     ref_res = std::max(abs(v)*ref_int,ref_mindist);
 }
 
@@ -37,10 +39,15 @@ int LAlong = 2;
 double Controller::getAccelerationCommand(const Vehicle& veh, const MyReference& ref, const state_type& x){
     // int LAlong = 2;                         // Look additional x points in front of preview point (else velocity error could be zero)
     double E = ref.v[IDwp+LAlong]-x[4];            // Error
-    iE = iE + E*sim_dt;                     // Integral error
 
-    // Calculate acceleration command and constrain it
-    double aCmd = checkSaturation(veh.amin,veh.amax,ctrl_Kp*E+ctrl_Ki*iE);
+    // Calculate raw command before saturation
+    double aRaw = ctrl_Kp*E + ctrl_Ki*iE;
+    double aCmd = checkSaturation(veh.amin, veh.amax, aRaw);
+
+    // Anti-windup: only accumulate integral when output is unsaturated
+    if (aRaw >= veh.amin && aRaw <= veh.amax){
+        iE += E * sim_dt;
+    }
     return aCmd;
 };
 
@@ -123,14 +130,19 @@ void transformToVehicle(double (&xval)[3],double (&yval)[3],double (&Txval)[3],d
     // 3. Loop through the points and transform them
     //      pointTransformed = Hinv*[Rx;Ry;1];
     for(int i = 0; i<=2; i++){
-        Txval[i] = xval[i]*cos(x[2]) - x[0]*cos(x[2]) - yval[i]*sin(x[2])+ x[1]*sin(x[2]);
-        Tyval[i] = yval[i]*cos(x[2]) - x[1]*cos(x[2]) + xval[i]*sin(x[2])- x[0]*sin(x[2]);
+        Txval[i] = xval[i]*cos(x[2]) - x[0]*cos(x[2]) - yval[i]*sin(x[2]) + x[1]*sin(x[2]);
+        Tyval[i] = yval[i]*cos(x[2]) - x[1]*cos(x[2]) - xval[i]*sin(x[2]) + x[0]*sin(x[2]);  // yL = -sin(θ)*(xW-x0) + cos(θ)*(yW-y0)
         	// double Xc = Xw*cos(carPose[2]) - carPose[0]*cos(carPose[2]) - carPose[1]*sin(carPose[2]) + Yw*sin(carPose[2]);
             // double Yc = Yw*cos(carPose[2]) - carPose[1]*cos(carPose[2]) + carPose[0]*sin(carPose[2]) - Xw*sin(carPose[2]);
     }
     return;
 }
 
+/** Second order Lagrange interpolation
+ * @param Txval x-coordinates of the three points around the preview point, transformed to the preview point's local coordinates
+ * @param Tyval y-coordinates of the three points around the preview point, transformed to the preview point's local coordinates
+ * @return y-coordinate of the x-axis intersection, which is the lateral error
+ */
 double interpolate(const double (&Txval)[3], const double (&Tyval)[3]){
     // Do a second order Lagrange interpolation around three closest data points
     // The lateral error is equal to the y-coordinate of x-axis intersection

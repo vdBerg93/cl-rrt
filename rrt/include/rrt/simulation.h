@@ -19,7 +19,7 @@ class Simulation{
 				   	const bool& GoalBiased, const bool& genProfile, const double& Vstart);
 		bool isvalid();
 };
-bool Simulation::isvalid()
+inline bool Simulation::isvalid()
 {
 	return endReached;
 }

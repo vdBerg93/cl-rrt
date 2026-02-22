@@ -1,9 +1,5 @@
-#include <limits>
-// #include "rrt/collision.h"
-#include "rrt/rrtplanner.h"
-#include "rrt/simulation.h"
-#include "rrt/transformations.h"
-using namespace std;
+#include "rrt/headers.h"
+#include "rrt/globals.h"
 
 
 double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCost, const Node& node, const vector<car_msgs::Obstacle2D> det);
@@ -37,11 +33,14 @@ void MyRRT::addInitialNode(const vector<double>& state){
 }
 
 void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, vector<double>& carState){
+	// Seed the RNG once per process for stochastic sampling
+	static bool seeded = false;
+	if (!seeded){ srand(static_cast<unsigned int>(time(nullptr))); seeded = true; }
+
 	// Add states for logging additional info: waypointid, reference velocity, steer command
 	carState.push_back(0); carState.push_back(0); carState.push_back(0); carState.push_back(0); assert(carState.size()>=6);
 	// If committed path is empty, initialize tree with single point at (x,y) = (Dla,0)
 	if (nodes.size()==0){
-		makeEmptyTree:
 		RRT.addInitialNode(carState);
 		ROS_INFO_STREAM("Initialized empty tree!");
 		return;
@@ -54,7 +53,7 @@ void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, vector<
 			nodes.erase(it--);
 			ROS_INFO_STREAM("Erased a node from initialization!");
 		}
-	}	
+	}
 
 	// Check if goal is reached
 	for(auto it = nodes.begin(); it!=nodes.end(); ++it){
@@ -73,9 +72,11 @@ void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, vector<
 		for(int i = 0; i!=it->tra.size(); i++){
 			// double Dobs = checkObsDistance(it->tra[i], RRT.det, RRT.carState);
 			double Dobs = checkObsDistance(RRT.carState);
-			ROS_WARN_STREAM(" in initializeTree: udpate Dobs function!");
+			ROS_WARN_STREAM_ONCE(" in initializeTree: update Dobs function!");
 			if(Dobs==0){
-				goto makeEmptyTree;
+				RRT.addInitialNode(carState);
+				ROS_INFO_STREAM("Initialized empty tree (collision in prior nodes)!");
+				return;
 			}
 		}
 	}
@@ -107,7 +108,7 @@ double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCos
 	for(auto it = node.tra.begin(); it!=node.tra.end(); it++){
 		// double Dobs = checkObsDistance(*it, RRT.det, RRT.carState);
 		double Dobs = checkObsDistance(RRT.carState);
-		ROS_WARN_STREAM("in getNodeCost: update obstacle distance fcn!");
+		ROS_WARN_STREAM_ONCE("in getNodeCost: update obstacle distance fcn!");
 		double kappa = tan((*it)[3])/veh.L;								// Vehicle path curvature
 		cost += RRT.Wcost[0]*(*it)[4]*sim_dt + RRT.Wcost[1]*abs(kappa) + RRT.Wcost[2]*exp(-RRT.Wcost[3]*Dobs);
 		if (RRT.bend){
@@ -127,11 +128,10 @@ void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<c
 	
 	// #### RANDOM SAMPLING: ####
 	geometry_msgs::Point sample;
-	if (RRT.bend){ 	// Sample on lane
-		// double Lmax = RRT.goalPose[0];
-		// sample = sampleOnLane(Cxy,RRT.laneShifts, Lmax);
-		sample = sampleAroundVehicle(RRT.goalPose);	
-	}else{ 			// Sample around vehicle
+	if (RRT.bend){ 	// Sample on lane for lane-change scenarios
+		double Lmax = RRT.goalPose[0];
+		sample = sampleOnLane(Cxy, RRT.laneShifts, Lmax);
+	}else{ 			// Sample around vehicle for straight driving
 		sample = sampleAroundVehicle(RRT.goalPose);
 	}
 	signed int dir = 1; // Driving direction variable
@@ -210,7 +210,7 @@ geometry_msgs::Point sampleOnLane(const vector<double>& Cxy, vector<double> lane
 	double r = static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(((laneShifts.size()-1)))));
 	int laneIndex = (int) floor(r+0.5);	
 	double rho = laneShifts[laneIndex];
-	assert(0<=laneIndex<=(laneShifts.size()-1));
+	assert(laneIndex >= 0 && laneIndex <= (int)(laneShifts.size()-1));
     // Rotate (S,rho) with slope, translate with C0
 	double theta = atan2(Cxy[1], 1);
 	double Xstraight = cos(theta)*S - sin(theta)*rho;
@@ -223,13 +223,38 @@ geometry_msgs::Point sampleOnLane(const vector<double>& Cxy, vector<double> lane
 	return sample;
 }
 
+// Pre-screen tree nodes by squared Euclidean distance to sample. Returns indices of the
+// closest `nCandidates` nodes, avoiding expensive Dubins evaluations on distant nodes.
+static vector<int> euclideanPrescreen(const MyRRT& rrt, const geometry_msgs::Point& sample, int nCandidates){
+	vector<pair<int,float>> eucDist;
+	eucDist.reserve(rrt.tree.size());
+	for(int i = 0; i != (int)rrt.tree.size(); i++){
+		float dx = sample.x - rrt.tree[i].state[0];
+		float dy = sample.y - rrt.tree[i].state[1];
+		eucDist.push_back(make_pair(i, dx*dx + dy*dy));
+	}
+	nCandidates = std::min(nCandidates, (int)rrt.tree.size());
+	std::partial_sort(eucDist.begin(), eucDist.begin()+nCandidates, eucDist.end(),
+		[](const pair<int,float>& a, const pair<int,float>& b){ return a.second < b.second; });
+	vector<int> result;
+	result.reserve(nCandidates);
+	for(int i = 0; i < nCandidates; i++){
+		result.push_back(eucDist[i].first);
+	}
+	return result;
+}
+
 // Sort nodes according to the exploration heuristic (Dubins distance)
 vector<int> sortNodesExplore(const MyRRT& rrt, const geometry_msgs::Point& sample){
+	// Pre-screen with cheap Euclidean distance before computing Dubins (O(n·log n) → O(n))
+	int nCandidates = std::max(4*(int)rrt.sortLimit, 20);
+	vector<int> candidates = euclideanPrescreen(rrt, sample, nCandidates);
+
 	vector<pair<int,float>> dVector;
-	// Generate data pair of ID + Dubins distance
-	for(int nodeid = 0; nodeid != rrt.tree.size(); nodeid++){
-		dVector.push_back(make_pair(nodeid,dubinsDistance(sample, rrt.tree[nodeid], rrt.direction)));
-	};
+	dVector.reserve(candidates.size());
+	for(int nodeid : candidates){
+		dVector.push_back(make_pair(nodeid, dubinsDistance(sample, rrt.tree[nodeid], rrt.direction)));
+	}
 	// Sort the pairs from shortest to longest distance
 	sort(dVector.begin(),dVector.end(),[](const pair<int,float>& a, const pair<int,float>& b){return a.second< b.second;});
 	// Extract feasible connections until maximum size is reached
@@ -248,11 +273,16 @@ vector<int> sortNodesExplore(const MyRRT& rrt, const geometry_msgs::Point& sampl
 
 // Sort nodes according to the optimization heuristic (Travel time)
 vector<int> sortNodesOptimize(const MyRRT& rrt, const geometry_msgs::Point& sample){
+	// Pre-screen with cheap Euclidean distance before computing Dubins (O(n·log n) → O(n))
+	int nCandidates = std::max(4*(int)rrt.sortLimit, 20);
+	vector<int> candidates = euclideanPrescreen(rrt, sample, nCandidates);
+
 	vector<pair<int,float>> dVector;
-	for(int index = 0; index != rrt.tree.size(); index++){
+	dVector.reserve(candidates.size());
+	for(int index : candidates){
 		// Cost = cost_parent + dubins distance
-		dVector.push_back(make_pair(index,rrt.tree[index].costE + dubinsDistance(sample, rrt.tree[index], rrt.direction)));
-	};
+		dVector.push_back(make_pair(index, rrt.tree[index].costE + dubinsDistance(sample, rrt.tree[index], rrt.direction)));
+	}
 	sort(dVector.begin(),dVector.end(),[](const pair<int,float>& a, const pair<int,float>& b){return a.second< b.second;});
 	vector<int> sortedList;
 	for(vector<pair<int,float>>::iterator it = dVector.begin(); it != dVector.end(); ++it){
@@ -262,7 +292,7 @@ vector<int> sortNodesOptimize(const MyRRT& rrt, const geometry_msgs::Point& samp
 		}
 		if (sortedList.size()==rrt.sortLimit){break;}
 	}
-	
+
 	if(debug_mode){cout<<"Sorted nodes with optimization heuristic."<<endl;}
 	return sortedList;
 }
@@ -291,12 +321,12 @@ bool feasibleNode(const MyRRT& rrt, const Node& node, const geometry_msgs::Point
 // Check if a goal biased expansion is feasible
 bool feasibleGoalBias(const MyRRT& rrt){
 	// Define circles of minimum turning radius left and right of the vehicle
-	double R1{4.77}; double R2{R1-0.3};
+	double R1{5.95}; double R2{R1-0.3};  // Prius minimum turning radius (vehicle.h)
 	geometry_msgs::Point center_l, center_r;
 	center_l.x = rrt.goalPose[0]+R1*cos(rrt.goalPose[2]-M_PI_2);
-	center_l.y = rrt.goalPose[1]+R1*cos(rrt.goalPose[2]-M_PI_2);
+	center_l.y = rrt.goalPose[1]+R1*sin(rrt.goalPose[2]-M_PI_2);
 	center_r.x = rrt.goalPose[0]+R1*cos(rrt.goalPose[2]+M_PI_2);
-	center_r.y = rrt.goalPose[1]+R1*cos(rrt.goalPose[2]+M_PI_2);
+	center_r.y = rrt.goalPose[1]+R1*sin(rrt.goalPose[2]+M_PI_2);
 	// If the node state lies within either one of these circles, the goal bias is not feasible due to the vehicle' minimum turning radius
 	Node node = rrt.tree.back();
 	bool outside_left_circle = sqrt( pow(node.state[0]-center_l.x,2) + pow(node.state[1]-center_l.y,2) ) > R2;
@@ -347,15 +377,14 @@ vector<Node> extractBestPath(vector<Node> tree, ros::Publisher* ptrPub){
 		sort(pair_vector.begin(),pair_vector.end(),[](const pair<int,double>& a, const pair<int,double>& b){return a.second< b.second;});
 		// Add lowest cost solution to best path vector
 		bestPath.push_back(tree[pair_vector.front().first]);
-		// Backtracking
-		signed int parent = bestPath.front().parentID;
-		ROS_WARN_STREAM("Best path cost = "<<tree[parent].costS);
+		// Backtracking: use push_back + reverse to avoid O(k²) front-insert cost
+		signed int parent = bestPath.back().parentID;
+		ROS_WARN_STREAM("Best path cost = "<<tree[pair_vector.front().first].costS);
 		while (parent!=-1){
-			// ROS_INFO_STREAM("parent = "<<parent);
-			bestPath.insert(bestPath.begin(), tree[parent]);
-			// ROS_INFO_STREAM("DB2");
-			parent = bestPath.front().parentID;
+			bestPath.push_back(tree[parent]);
+			parent = bestPath.back().parentID;
 		}
+		std::reverse(bestPath.begin(), bestPath.end());
 	}
 	// Update parents for next tree
 	// for(int i = 0; i!= bestPath.size(); i++){
@@ -370,7 +399,7 @@ vector<Node> extractBestPath(vector<Node> tree, ros::Publisher* ptrPub){
 // Calculate Dubins distance between a pose (R2S) and point (R2)
 float dubinsDistance(geometry_msgs::Point S, Node N, int dir){
     // Distance measurement with the Dubins metric
-    float rho = 4.77;
+    float rho = 5.95;  // Prius minimum turning radius (vehicle.h)
     // 1. Subtract node location
     float qw_x = S.x - N.state[0];
     float qw_y = S.y - N.state[1];
@@ -388,7 +417,7 @@ float dubinsDistance(geometry_msgs::Point S, Node N, int dir){
     }
 
     float df = sqrt( qw_x*qw_x + (qw_y+rho)*(qw_y+rho) );
-    float alpha =  2*M_PI - acos( (5*rho*rho - df*df)/(4*rho*rho));
+    float alpha =  2*M_PI - acos( std::max(-1.0f, std::min(1.0f, (5*rho*rho - df*df)/(4*rho*rho))));
 
     // Check if qw lies within circles
     bool q_in_Dp = 0;
@@ -452,61 +481,3 @@ visualization_msgs::Marker createEmptyMsg(){
     msg.type = visualization_msgs::Marker::POINTS;
     return msg;    
 }
-
-
-
-// double initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Path>& path, vector<double> carState){
-// 	ROS_DEBUG_STREAM("In initialization function");
-// 	carState.push_back(0); carState.push_back(0); carState.push_back(0); carState.push_back(0); 
-// 	double Tp = 0;
-// 	assert(carState.size()>=6);
-// 	// If committed path is empty, initialize tree with reference at (Dla,0)
-// 	if (path.size()==0){
-// 		ROS_INFO_STREAM("No committed path. Adding initial node at preview point...");
-// 		assert(carState.size()>=6);
-// 		RRT.addInitialNode(carState);
-// 		ROS_INFO_STREAM("Initialized empty tree.");
-// 		return Tp;
-// 	}
-
-// 	// See which parts of path have been passed and erase these from the pathlist
-// 	// 1. Loop through the segments
-// 	// 2. erase everything behind the car
-// 	geometry_msgs::Point Ppreview; Ppreview.x = ctrl_dla; Ppreview.y = 0; Ppreview.z=0;
-// 	for(auto it = path.begin(); it!=path.end(); ++it){
-// 		if ((it->tra.back()[0])<0){
-// 			path.erase(it--);
-// 			cout<<"Removed part of plan."<<endl;
-// 		}else{
-// 			for(auto it2 = it->tra.begin(); it2!=it->tra.end(); ++it2){
-// 				if (((*it2)[0])<0){
-// 					it->tra.erase(it2--);
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	// If this assertion fails, the path committment is not configured properly
-// 	if(path.size()==0){
-// 		ROS_ERROR_STREAM("All nodes were erased. Committed time not configured properly!");
-// 		RRT.addInitialNode(carState);
-// 		return 0;
-// 		// assert(path.size()!=0);
-// 	}
-
-// 	// Calculate total committed time
-// 	for(auto it = path.begin(); it!=path.end(); ++it){
-// 		for(int j = 1; j<it->tra.size(); j++){
-// 			Tp += sim_dt;
-// 		}
-// 	}
-
-// 	// Initialize tree
-// 	Node node(path.back().tra.back(), -1, path.back().ref, path.back().tra,0,0,0);
-// 	// node.state[6] = Tp;
-// 	node.state[6] = 0;
-// 	RRT.tree.push_back(node);
-// 	ROS_WARN_STREAM("Initialized tree. Tp = "<<Tp);
-
-// 	return Tp;
-// }

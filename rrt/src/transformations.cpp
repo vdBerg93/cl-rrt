@@ -1,3 +1,6 @@
+#include "rrt/headers.h"
+#include "rrt/globals.h"
+
 /**************************************
  **** TRANSFORMATIONS OF 2D POINTS ****
  *************************************/
@@ -293,9 +296,9 @@ void transformNodesCarToworld(vector<Node>& nodes, const vector<double> carState
 		for(int i = 0; i!=it->ref.x.size(); i++){
 			transformPointCarToWorld(it->ref.x[i],it->ref.y[i],carState);
 		}
-		// Loop through trajectory and transform
+		// Loop through trajectory and transform (position AND heading)
 		for(int j = 0; j!=it->tra.size(); j++){
-			transformPointCarToWorld(it->tra[j][0], it->tra[j][1], carState);
+			transformStateCarToWorld(it->tra[j], carState);
 		}
 	}
 }
@@ -307,9 +310,9 @@ void transformNodesWorldToCar(vector<Node>& nodes, const vector<double> carState
 		for(int i = 0; i!=it->ref.x.size(); i++){
 			transformPointWorldToCar(it->ref.x[i],it->ref.y[i],carState);
 		}
-		// Loop through trajectory and transform
+		// Loop through trajectory and transform (position AND heading)
 		for(int j = 0; j!=it->tra.size(); j++){
-			transformPointWorldToCar(it->tra[j][0], it->tra[j][1], carState);
+			transformStateWorldToCar(it->tra[j], carState);
 		}
 	}
 }
