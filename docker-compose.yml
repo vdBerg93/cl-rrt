@@ -1,0 +1,10 @@
+services:
+  cl-rrt:
+    build: .
+    # X11 display forwarding — works on Linux and WSL2 with WSLg
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    network_mode: host
+    command: roslaunch rrt rrt.launch

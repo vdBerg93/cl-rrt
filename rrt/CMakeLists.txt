@@ -16,6 +16,7 @@ set( msg_dependencies
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
+  visualization_msgs
 #  message_generation
   ${msg_dependencies}
 )
