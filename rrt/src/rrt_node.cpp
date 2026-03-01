@@ -63,6 +63,10 @@ int main( int argc, char** argv ){
 	ros::Publisher pubMPC = nh.advertise<car_msgs::Trajectory>("/path_publisher/path",1);
 	motionPlanner.pubMPC = &pubMPC;
 
+	// Full-resolution trajectory for sim_node
+	ros::Publisher pubSimTra = nh.advertise<car_msgs::Trajectory>("/sim/trajectory",1);
+	motionPlanner.pubSimTra = &pubSimTra;
+
 	// State subscriber
 	ros::Subscriber subState = nh.subscribe("carstate",1,&MotionPlanner::updateState, &motionPlanner);
 

@@ -17,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   visualization_msgs
+  tf
 #  message_generation
   ${msg_dependencies}
 )
@@ -148,6 +149,11 @@ target_link_libraries(${PROJECT_NAME}_node
   rrt_core
   ${catkin_LIBRARIES}
 )
+
+## Sim node executable
+add_executable(sim_node src/sim_node.cpp)
+add_dependencies(sim_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(sim_node ${catkin_LIBRARIES})
 
 #############
 ## Install ##

@@ -23,6 +23,8 @@ This produces a tree of smooth, drivable trajectories that respect the vehicle's
 
 ## Architecture
 
+### With external state source (real vehicle / full simulation)
+
 ```
   ┌─────────────────┐     MotionRequest      ┌──────────────────────────────────────────┐
   │ mission_planner │ ─────────────────────► │              rrt (motion planner)        │
@@ -37,6 +39,23 @@ This produces a tree of smooth, drivable trajectories that respect the vehicle's
   │  - odometry     │                        │    │     └── Simulation::propagate()     │
   │  - steer angle  │                        │    └── extractBestPath() [backtrack]     │
   └─────────────────┘                        └──────────────────────────────────────────┘
+```
+
+### Standalone simulation mode (`sim.launch`)
+
+A self-contained simulation environment is included that requires no external nodes. A circular road (R=50 m) is visualized in RViz, and the car replays the planner's trajectory at 25 Hz.
+
+```
+  sim_node                                    rrt_node
+    │                                            │
+    │── /carstate (25 Hz) ──────────────────────►│ (vehicle state)
+    │── /motionplanner/request (2 Hz) ──────────►│ (goal ahead on circle)
+    │                                            │── plans for 200 ms
+    │◄── /sim/trajectory ───────────────────────│ (full-resolution trajectory)
+    │                                            │
+    │  Steps through planned states at 25 Hz     │
+    │  Publishes TF (map → base_link)            │
+    │  Publishes car marker + road markers       │
 ```
 
 ## Key Technical Concepts
@@ -89,7 +108,7 @@ Parameters for Toyota Prius are derived from manufacturer specifications and the
 
 | Package | Description |
 |---|---|
-| `rrt` | Core motion planner: tree expansion, simulation, controller, reference generation |
+| `rrt` | Core motion planner: tree expansion, simulation, controller, reference generation. Also includes `sim_node` for standalone simulation. |
 | `mission_planner` | Reads Rviz goal poses, issues motion requests at 5 Hz |
 | `state_estimator` | Reads odometry and steering angle, publishes vehicle state at 50 Hz |
 | `car_msgs` | Custom ROS message and service definitions |
@@ -144,18 +163,25 @@ source devel/setup.bash
 
 ## Running
 
+### Standalone simulation (no external nodes needed)
+
 ```bash
 # Docker
 docker compose up
 
 # Native
+roslaunch rrt sim.launch
+```
+
+This starts `sim_node`, `rrt_node`, and RViz. A car drives around a circular road (R=50 m) at up to 5 m/s, with the RRT planner continuously replanning. No mission planner or state estimator is needed.
+
+### With external state source
+
+```bash
 roslaunch rrt rrt.launch
 ```
 
-This starts:
-1. RViz with the tree marker array (`/tree_markerarray`) and the goal pose topic (`/move_base_simple/goal`)
-2. The mission planner node
-3. The RRT motion planner node
+This starts RViz and the RRT planner node. Requires an external mission planner to publish `MotionRequest` messages and a state estimator publishing on `/carstate`.
 
 Set a goal by using the **2D Nav Goal** tool in RViz.
 

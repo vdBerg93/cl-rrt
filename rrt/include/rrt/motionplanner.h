@@ -26,6 +26,7 @@ struct MotionPlanner{
 		ros::Publisher* pubPlan;
 		ros::Publisher* pubMPC;
 		ros::Publisher* pubBest;				// Pointer to response publisher
+		ros::Publisher* pubSimTra = nullptr;	// Pointer to sim trajectory publisher
 		std::vector<car_msgs::Obstacle2D> det;		// 2D OBB
 		void planMotion(car_msgs::MotionRequest msg);
 		bool updateObstacles();

@@ -19,6 +19,24 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	updateObstacles();														// Update obstacles
 
 	transformNodesWorldToCar(bestNodes,worldState);			// Transform last path to new coordinate frame
+
+	// When bend=true, plan in straightened road frame so that straight-line
+	// references between samples follow the road instead of cutting corners.
+	const bool useRoadFrame = req.bend && req.Cxy.size() >= 3 && req.Cxs.size() >= 3;
+	vector<double> Cxy_car, Cxs_car;  // originals for back-transform
+	if (useRoadFrame) {
+		Cxy_car = req.Cxy;
+		Cxs_car = req.Cxs;
+		transformNodesCarToRoad(bestNodes, carPose, Cxy_car, Cxs_car, veh);
+		transformStateCarToRoad(carPose, Cxy_car, Cxs_car, veh);
+		// Transform goal to road frame
+		double gx = req.goal[0], gy = req.goal[1], gh = req.goal[2];
+		transformPoseCarToRoad(gx, gy, gh, Cxy_car, Cxs_car);
+		req.goal[0] = gx; req.goal[1] = gy; req.goal[2] = gh;
+		// In road frame the road is straight — zero out curvature for planning
+		req.Cxy = {0.0, 0.0, 0.0};
+	}
+
 	GoalPose goal(req.goal[0], req.goal[1], req.goal[2], req.goal[3]);
 	MyRRT RRT(goal,req.laneShifts,req.Cxy, req.bend);		// Initialize RRT planner
 	RRT.det = det; RRT.carState = carPose; 					// UPDATE OBSTACLE DETECTIONS and car state
@@ -47,7 +65,10 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	// ********************************************************
 	if (!commit_path){	bestNodes.clear();	}
 	bestNodes = extractBestPath(RRT.tree,pubPtr);	// Select best path
-	// Transform nodes to world coordinates
+	// Transform back: road → car (if applicable), then car → world
+	if (useRoadFrame) {
+		transformNodesRoadToCar(bestNodes, carPose, Cxy_car, Cxs_car, veh);
+	}
 	if(debug_mode){ cout<<"transforming nodes to global..."<<endl;}
 	transformNodesCarToworld(bestNodes,worldState);
 	// No solution found
@@ -63,8 +84,11 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	}
 	vector<Path> plan = convertNodesToPath(bestNodes);
 
-	// Filtered message for MPC controller
+	// Full-resolution trajectory for sim_node
 	car_msgs::Trajectory msg = generateMPCmessage(plan);
+	if (pubSimTra) { pubSimTra->publish(msg); }
+
+	// Filtered message for MPC controller
 	filterMPCmessage(msg);			// Reduce number of waypoints in path message. Space x meters apart.
 	if(msg.x.size()>=3){
 		pubMPC->publish(msg);
@@ -78,8 +102,11 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 bool MotionPlanner::updateObstacles(){
 	ROS_WARN_STREAM_ONCE("In motionplanner: adjust MotionPlanner::updateObstacles() with occupancy grid message");
     car_msgs::getobstacles srv;
-    (*clientPtr).call(srv);
-	det = srv.response.obstacles;
+    if (clientPtr->exists()) {
+        clientPtr->call(srv);
+        det = srv.response.obstacles;
+    }
+    return true;
 }
 
 // State callback message

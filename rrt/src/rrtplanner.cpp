@@ -96,11 +96,17 @@ void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, Vehicle
 	ROS_INFO_STREAM("Initialized tree with previous nodes");
 }
 
-// Distance to the lane centerline Cxy
-double getDistToLane(const double& x, const double& y, double S, const vector<double>& Cxy){
-	double Lx = (x - S*Cxy[1] + y*Cxy[1] - Cxy[1]*Cxy[2])/(pow(Cxy[1],2) + 1);
-	double Ly = S + Cxy[2] + (Cxy[1]*(x - S*Cxy[1] + y*Cxy[1] - Cxy[1]*Cxy[2]))/(pow(Cxy[1],2) + 1);
-	return sqrt( pow(Lx-x,2) + pow(Ly-y,2) );
+// Distance to the lane centerline Cxy (offset by laneShift)
+double getDistToLane(const double& x, const double& y, double laneShift, const vector<double>& Cxy){
+	double dist;
+	if (std::abs(Cxy[0]) < 1e-10) {
+		// Straight road: perpendicular distance to line y = Cxy[1]*x + Cxy[2]
+		dist = std::abs(y - Cxy[1]*x - Cxy[2]) / sqrt(1.0 + Cxy[1]*Cxy[1]);
+	} else {
+		vector<double> Parc = findClosestPointOnArc(x, y, Cxy);
+		dist = sqrt(pow(Parc[0]-x, 2) + pow(Parc[1]-y, 2));
+	}
+	return std::abs(dist - std::abs(laneShift));
 }
 
 /**
@@ -194,22 +200,20 @@ geometry_msgs::Point sampleAroundVehicle(const GoalPose& goalPose){
 
 // Sample on the given lane center lines
 geometry_msgs::Point sampleOnLane(const vector<double>& Cxy, vector<double> laneShifts, double Lmax){
-	// sample w.r.t. the straightened road y(x) = c1*x + c0;
-	// 1. Sample length coordinate (S) on reference road centerline
+	// 1. Sample x-coordinate along the road centerline parabola
 	double S = uniform_real_distribution<double>(ctrl_dla, Lmax)(rng());
-	// 2. Sample coordinate (rho) from lane shifts
-	// Select a random lane
+	// 2. Select a random lane
 	int laneIndex = uniform_int_distribution<int>(0, (int)laneShifts.size()-1)(rng());
 	double rho = laneShifts[laneIndex];
 	assert(laneIndex >= 0 && laneIndex <= (int)(laneShifts.size()-1));
-    // Rotate (S,rho) with slope, translate with C0
-	double theta = atan2(Cxy[1], 1);
-	double Xstraight = cos(theta)*S - sin(theta)*rho;
-	double Ystraight = sin(theta)*S + cos(theta)*rho + Cxy[2];
-	// Prepare sample
+	// 3. Compute point on road centerline parabola y = Cxy[0]*x^2 + Cxy[1]*x + Cxy[2]
+	double y_road = Cxy[0]*S*S + Cxy[1]*S + Cxy[2];
+	// 4. Offset perpendicular to the road tangent by rho
+	double dydx = 2.0*Cxy[0]*S + Cxy[1];
+	double L = sqrt(1.0 + dydx*dydx);
 	geometry_msgs::Point sample;
-	sample.x = Xstraight;
-	sample.y = Ystraight;
+	sample.x = S      + (-dydx / L) * rho;
+	sample.y = y_road + ( 1.0  / L) * rho;
 	if(debug_mode){cout<<"Generated sample: x="<<sample.x<<" y="<<sample.y<<endl;}
 	return sample;
 }
@@ -459,7 +463,7 @@ float dubinsDistance(geometry_msgs::Point S, const Node& N, int dir, const Vehic
 visualization_msgs::Marker createStateMsg(int ID, const StateArray& T, bool goalReached){
     // Initialize marker message
     visualization_msgs::Marker msg;
-    msg.header.frame_id = "map";
+    msg.header.frame_id = "base_link";
     msg.header.stamp = ros::Time::now();
     msg.ns = "tree";
 	msg.id = ID;
@@ -490,7 +494,7 @@ visualization_msgs::Marker createStateMsg(int ID, const StateArray& T, bool goal
 visualization_msgs::Marker createEmptyMsg(){
     // Initialize marker message
     visualization_msgs::Marker msg;
-    msg.header.frame_id = "map";
+    msg.header.frame_id = "base_link";
     msg.header.stamp = ros::Time::now();
     msg.ns = "trajectory";
     msg.action = visualization_msgs::Marker::DELETEALL;

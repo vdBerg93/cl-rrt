@@ -1,0 +1,6 @@
+<launch>
+    <include file="$(find rrt)/launch/parameters.launch" />
+    <node pkg="rrt" type="sim_node" name="sim_node" output="screen" />
+    <node pkg="rrt" type="rrt_node" name="rrt_node" output="screen" />
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find rrt)/rviz/sim.rviz" />
+</launch>

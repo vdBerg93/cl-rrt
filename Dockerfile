@@ -4,6 +4,7 @@ FROM ros:melodic
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-melodic-vision-msgs \
     ros-melodic-robot-localization \
+    ros-melodic-tf \
     ros-melodic-rviz \
     git \
     && rm -rf /var/lib/apt/lists/*
