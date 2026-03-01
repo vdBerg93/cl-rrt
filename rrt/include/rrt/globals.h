@@ -18,7 +18,6 @@ extern double Tcommit;
 extern double sim_dt;
 extern double ctrl_tla, ctrl_dla, ctrl_mindla, ctrl_dlavmin, ctrl_Kp, ctrl_Ki;
 extern double ref_res, ref_int, ref_mindist, vmax, vgoal;
-extern double ay_road_max;
 
 // Per-query failure counters
 extern int fail_iterlimit;

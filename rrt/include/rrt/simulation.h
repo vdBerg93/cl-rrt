@@ -6,12 +6,12 @@
 
 class Simulation{
 	private:
-		void propagate(const MyRRT& RRT, Controller control, const MyReference& ref, const Vehicle& veh);
+		void propagate(const MyRRT& RRT, Controller& control, const MyReference& ref, const Vehicle& veh);
 	public:
 		StateArray stateArray;
-		vector<double> curvature;
-		vector<int> closestPoints;
-		vector<double> acmd,dcmd; // controls logging
+		std::vector<double> curvature;
+		std::vector<int> closestPoints;
+		std::vector<double> acmd,dcmd; // controls logging
 		double costS, costE;
 
 		bool goalReached, endReached;

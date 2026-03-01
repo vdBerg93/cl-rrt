@@ -1,6 +1,7 @@
 // Vehicle controller
 #include "rrt/headers.h"
 #include "rrt/globals.h"
+using namespace std;
 
 
 //*******************************
@@ -44,7 +45,8 @@ int LAlong = 2;
  * preventing integrator windup against the actuator limits.
  */
 double Controller::getAccelerationCommand(const Vehicle& veh, const MyReference& ref, const VehicleState& x){
-    double E = ref.v[IDwp+LAlong]-x.v;            // Error
+    int idx = std::min(IDwp + LAlong, (int)ref.v.size() - 1);
+    double E = ref.v[idx]-x.v;            // Error
 
     // Calculate raw command before saturation
     double aRaw = ctrl_Kp*E + ctrl_Ki*iE;
@@ -70,7 +72,7 @@ double Controller::getAccelerationCommand(const Vehicle& veh, const MyReference&
 double Controller::getSteerCommand(const MyReference& ref, const VehicleState& x, const Vehicle& veh){
     ym = getLateralError(ref,x,IDwp,Ppreview);                          // Get the lateral error at preview point, perpendicular to vehicle
     double cmdDelta = 2*((veh.L+veh.Kus*x.v*x.v)/pow(ctrl_dla,2))*ym; // Single preview point control (Schmeitz, 2017, "Towards a Generic Lateral Control Concept ...")
-    return checkSaturation(-veh.dmax,veh.dmax,cmdDelta);;               // Constrain with actuator saturation limits
+    return checkSaturation(-veh.dmax,veh.dmax,cmdDelta);                // Constrain with actuator saturation limits
 };
 
 void Controller::updateWaypoint(const MyReference& ref, const VehicleState& x){
@@ -102,8 +104,8 @@ double getLateralError(const MyReference &ref, const VehicleState &x, const int&
     if (IDwp==0){
         IDmin = IDwp; IDmax = IDwp+2;
     }
-    else if (IDwp==ref.x.size()){
-        IDmin = IDwp-2; IDmax = IDwp;
+    else if (IDwp >= (int)ref.x.size()-1){
+        IDmin = (int)ref.x.size()-3; IDmax = (int)ref.x.size()-1;
     }
     else{
         IDmin = IDwp-1; IDmax = IDwp+1;
@@ -123,19 +125,22 @@ double getLateralError(const MyReference &ref, const VehicleState &x, const int&
 
 
 int findClosestPoint(const MyReference& ref, const geometry_msgs::Point& point, int ID){
-    // Find the point along the reference that is closest to the preview point
+    // Find the closest reference point, exploiting monotonic forward motion.
+    // The preview point advances along the reference, so the minimum distance
+    // index only moves forward. Once distance starts increasing, we're past it.
     double dmin{inf}, di;
-    int idmin = 0;
-    for(int i = ID; i<ref.x.size(); i++){
+    int idmin = ID;
+    for(int i = ID; i<(int)ref.x.size(); i++){
         di = (ref.x[i]-point.x)*(ref.x[i]-point.x) + (ref.y[i]-point.y)*(ref.y[i]-point.y);
-        // If next point is closer, update minimum
         if(di<dmin){
             dmin = di;
             idmin = i;
+        } else {
+            break; // distance is increasing, minimum was found
         }
     }
     return idmin;
-};
+}
 
 /**
  * @brief Homogeneous transformation of reference points to the preview point's local frame.

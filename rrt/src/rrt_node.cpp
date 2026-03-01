@@ -15,8 +15,6 @@ double Tcommit {0.25};
 double sim_dt;
 double ctrl_tla, ctrl_dla, ctrl_mindla, ctrl_dlavmin, ctrl_Kp, ctrl_Ki;
 double ref_res, ref_int, ref_mindist, vmax, vgoal;
-double ay_road_max;
-
 // Failure counters
 int fail_iterlimit{0};
 int fail_collision{0};
@@ -25,6 +23,7 @@ int sim_count{0};
 
 #include "rrt/headers.h"
 #include "rrt/globals.h"
+using namespace std;
 
 void updateParameters(){
 	// Get parameters from server
@@ -46,7 +45,7 @@ int main( int argc, char** argv ){
 	updateParameters(); 			// Get parameters from server
 	MotionPlanner motionPlanner;	// Initialize MP object
 	// Create marker publisher for Rviz
-	ros::Publisher pubMarker = nh.advertise<visualization_msgs::MarkerArray>("tree_markerarray",1);
+	ros::Publisher pubMarker = nh.advertise<visualization_msgs::MarkerArray>("tree_markerarray",10);
 	motionPlanner.pubPtr = &pubMarker; 	// Initialize global pointer to marker publisher
 
 	// Motion request subscriber

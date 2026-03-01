@@ -1,5 +1,6 @@
 #include "rrt/headers.h"
 #include "rrt/globals.h"
+using namespace std;
 
 
 //*****************************************

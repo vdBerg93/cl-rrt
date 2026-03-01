@@ -1,9 +1,14 @@
 #include "rrt/headers.h"
 #include "rrt/globals.h"
+#include <random>
+using namespace std;
 
+static mt19937& rng() {
+	static mt19937 gen(random_device{}());
+	return gen;
+}
 
-double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCost, const Node& node, const vector<car_msgs::Obstacle2D> det);
-double d2L(const double& x, const double& y, double S, const vector<double>& Cxy);
+double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCost, const Node& node, const vector<car_msgs::Obstacle2D>& det);
 
 MyRRT::MyRRT(const GoalPose& _goalPose, const vector<double>& _laneShifts, const vector<double>& _Cxy, const bool& _bend):
 	bend(_bend), goalReached(0), sortLimit(10), direction(1), goalPose(_goalPose), laneShifts(_laneShifts), Cxy(_Cxy){
@@ -32,10 +37,6 @@ void MyRRT::addInitialNode(const VehicleState& state){
 }
 
 void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, VehicleState& carState){
-	// Seed the RNG once per process for stochastic sampling
-	static bool seeded = false;
-	if (!seeded){ srand(static_cast<unsigned int>(time(nullptr))); seeded = true; }
-
 	// VehicleState already has all 10 fields zero-initialized; no padding needed.
 
 	// If committed path is empty, initialize tree with single point at (x,y) = (Dla,0)
@@ -46,11 +47,13 @@ void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, Vehicle
 	}
 
 	// Erase nodes behind the vehicle
-	for(auto it = nodes.begin(); it!=nodes.end(); ++it){
+	for(auto it = nodes.begin(); it!=nodes.end(); ){
 		it->goalReached = 0;
 		if ((it->tra.back().x)<0){
-			nodes.erase(it--);
+			it = nodes.erase(it);
 			ROS_INFO_STREAM("Erased a node from initialization!");
+		} else {
+			++it;
 		}
 	}
 
@@ -94,7 +97,7 @@ void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, Vehicle
 }
 
 // Distance to the lane centerline Cxy
-double d2L(const double& x, const double& y, double S, const vector<double>& Cxy){
+double getDistToLane(const double& x, const double& y, double S, const vector<double>& Cxy){
 	double Lx = (x - S*Cxy[1] + y*Cxy[1] - Cxy[1]*Cxy[2])/(pow(Cxy[1],2) + 1);
 	double Ly = S + Cxy[2] + (Cxy[1]*(x - S*Cxy[1] + y*Cxy[1] - Cxy[1]*Cxy[2]))/(pow(Cxy[1],2) + 1);
 	return sqrt( pow(Lx-x,2) + pow(Ly-y,2) );
@@ -106,7 +109,7 @@ double d2L(const double& x, const double& y, double S, const vector<double>& Cxy
  * cost = parent_cost + sum_over_trajectory_of:
  *   W[0]*v*dt  +  W[1]*|kappa|  +  W[2]*exp(-W[3]*Dobs)  [+ W[4]*Dgoallane]
  */
-double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCost, const Node& node, const vector<car_msgs::Obstacle2D> det){
+double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCost, const Node& node, const vector<car_msgs::Obstacle2D>& det){
 	double cost = parentCost;
 	for(auto it = node.tra.begin(); it!=node.tra.end(); it++){
 		double Dobs = checkObsDistance(RRT.carState);
@@ -114,7 +117,7 @@ double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCos
 		double kappa = tan(it->delta)/veh.L;								// Vehicle path curvature
 		cost += RRT.Wcost[0]*it->v*sim_dt + RRT.Wcost[1]*abs(kappa) + RRT.Wcost[2]*exp(-RRT.Wcost[3]*Dobs);
 		if (RRT.bend){
-			double Dgoallane = d2L(it->x,it->y,RRT.laneShifts[0],RRT.Cxy);
+			double Dgoallane = getDistToLane(it->x,it->y,RRT.laneShifts[0],RRT.Cxy);
 			cost += RRT.Wcost[4]*Dgoallane;
 		}
 	}
@@ -123,7 +126,7 @@ double getNodeCost(const MyRRT& RRT, const Vehicle& veh, const double& parentCos
 
 
 // Perform a tree expansion
-void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<car_msgs::Obstacle2D>& det, const vector<double>& Cxy){;
+void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<car_msgs::Obstacle2D>& det, const vector<double>& Cxy){
 	if(debug_mode){
 		cout<<"New iteration."<<endl;
 	}
@@ -136,10 +139,10 @@ void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<c
 	}else{ 			// Sample around vehicle for straight driving
 		sample = sampleAroundVehicle(RRT.goalPose);
 	}
-	signed int dir = 1; // Driving direction variable
+	int dir = 1; // Driving direction variable
 	// #### SORTING THE NODES ####
 	vector<int> sortedNodes; bool node_added = false;
-	double r = static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(1))); 	// Generate random value [0-1]
+	double r = uniform_real_distribution<double>(0.0, 1.0)(rng()); 	// Generate random value [0-1]
 	if(r<=((RRT.goalReached*0.3)+(!RRT.goalReached*0.7))){								// Select a heuristic (shifts after goal is reached)
 		sortedNodes = sortNodesExplore(RRT,sample,veh); 		// Sort nodes in increasing Dubins distance to sample
 	}else{
@@ -179,8 +182,8 @@ geometry_msgs::Point sampleAroundVehicle(const GoalPose& goalPose){
 	double latMin {-7}, latMax{7};										// Width of the box
 
 	geometry_msgs::Point sample;
-	double rLong = static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(dGoal+10)));				// Random long. coordinate
-	double rLat = latMin + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(latMax-latMin))); // Random lat. coordinate
+	double rLong = uniform_real_distribution<double>(0.0, dGoal+10)(rng());				// Random long. coordinate
+	double rLat = uniform_real_distribution<double>(latMin, latMax)(rng()); // Random lat. coordinate
 
 	sample.x = rLong*cos(goalHeading) + rLat*cos(goalHeading+pi/2);		// Rotate the coordinates to align with goal heading
 	sample.y = rLong*sin(goalHeading) + rLat*sin(goalHeading+pi/2);
@@ -193,11 +196,10 @@ geometry_msgs::Point sampleAroundVehicle(const GoalPose& goalPose){
 geometry_msgs::Point sampleOnLane(const vector<double>& Cxy, vector<double> laneShifts, double Lmax){
 	// sample w.r.t. the straightened road y(x) = c1*x + c0;
 	// 1. Sample length coordinate (S) on reference road centerline
-	double S = ctrl_dla + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(Lmax-ctrl_dla)));
+	double S = uniform_real_distribution<double>(ctrl_dla, Lmax)(rng());
 	// 2. Sample coordinate (rho) from lane shifts
 	// Select a random lane
-	double r = static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(((laneShifts.size()-1)))));
-	int laneIndex = (int) floor(r+0.5);
+	int laneIndex = uniform_int_distribution<int>(0, (int)laneShifts.size()-1)(rng());
 	double rho = laneShifts[laneIndex];
 	assert(laneIndex >= 0 && laneIndex <= (int)(laneShifts.size()-1));
     // Rotate (S,rho) with slope, translate with C0
@@ -337,7 +339,7 @@ bool feasibleGoalBias(const MyRRT& rrt, const Vehicle& veh){
 	center_r.x = rrt.goalPose.x+R1*cos(rrt.goalPose.theta+M_PI_2);
 	center_r.y = rrt.goalPose.y+R1*sin(rrt.goalPose.theta+M_PI_2);
 	// If the node state lies within either one of these circles, the goal bias is not feasible due to the vehicle' minimum turning radius
-	Node node = rrt.tree.back();
+	const Node& node = rrt.tree.back();
 	bool outside_left_circle = sqrt( pow(node.state.x-center_l.x,2) + pow(node.state.y-center_l.y,2) ) > R2;
 	bool outside_right_circle = sqrt( pow(node.state.x-center_r.x,2) + pow(node.state.y-center_r.y,2) ) > R2;
 	// Determine the angle of the reference to the goal heading
@@ -354,7 +356,7 @@ bool feasibleGoalBias(const MyRRT& rrt, const Vehicle& veh){
 }
 
 // Extract the best path from the tree with backtracking
-vector<Node> extractBestPath(vector<Node> tree, ros::Publisher* ptrPub){
+vector<Node> extractBestPath(const vector<Node>& tree, ros::Publisher* ptrPub){
 	vector<Node> bestPath; 					// Initialize returned vector
 	vector<pair<int,double>> pair_vector;	// Initialize pair. 1: NodeID, 2: Cost
 	// Loop through the tree. When node reached goal, add it to the pair vector
@@ -387,7 +389,7 @@ vector<Node> extractBestPath(vector<Node> tree, ros::Publisher* ptrPub){
 		// Add lowest cost solution to best path vector
 		bestPath.push_back(tree[pair_vector.front().first]);
 		// Backtracking: use push_back + reverse to avoid O(k²) front-insert cost
-		signed int parent = bestPath.back().parentID;
+		int parent = bestPath.back().parentID;
 		ROS_WARN_STREAM("Best path cost = "<<tree[pair_vector.front().first].costS);
 		while (parent!=-1){
 			bestPath.push_back(tree[parent]);
@@ -457,7 +459,7 @@ float dubinsDistance(geometry_msgs::Point S, const Node& N, int dir, const Vehic
 visualization_msgs::Marker createStateMsg(int ID, const StateArray& T, bool goalReached){
     // Initialize marker message
     visualization_msgs::Marker msg;
-    msg.header.frame_id = "center_laser_link";
+    msg.header.frame_id = "map";
     msg.header.stamp = ros::Time::now();
     msg.ns = "tree";
 	msg.id = ID;
@@ -488,7 +490,7 @@ visualization_msgs::Marker createStateMsg(int ID, const StateArray& T, bool goal
 visualization_msgs::Marker createEmptyMsg(){
     // Initialize marker message
     visualization_msgs::Marker msg;
-    msg.header.frame_id = "center_laser_link";
+    msg.header.frame_id = "map";
     msg.header.stamp = ros::Time::now();
     msg.ns = "trajectory";
     msg.action = visualization_msgs::Marker::DELETEALL;

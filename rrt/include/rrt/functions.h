@@ -2,13 +2,15 @@
 #define functions_h
 
 #include <numeric>
+#include <vector>
+#include <cmath>
+#include <algorithm>
 
 const double inf = std::numeric_limits<double>::infinity();
 const double pi = M_PI;
 
-using namespace std;
 // Linear interpolation following MATLAB linspace
-inline vector<double> LinearSpacedVector(double a, double b, std::size_t N)
+inline std::vector<double> LinearSpacedVector(double a, double b, std::size_t N)
 {
     double h = (b - a) / static_cast<double>(N-1);
     std::vector<double> xs(N);
@@ -20,9 +22,9 @@ inline vector<double> LinearSpacedVector(double a, double b, std::size_t N)
     return xs;
 }
 
-inline vector<double> bezierCurveInterpolation(vector<double> cp, vector<double> t){
-		vector<double> vel_vector;
-	for(int i =0; i<=t.size(); i++){
+inline std::vector<double> bezierCurveInterpolation(std::vector<double> cp, std::vector<double> t){
+		std::vector<double> vel_vector;
+	for(int i =0; i<(int)t.size(); i++){
 		vel_vector.push_back( pow(1-t[i],3)*cp[0] + 3*pow(1-t[i],2)*t[i]*cp[1] + 3*pow(1-t[i],2)*cp[2] + pow(t[i],3)*cp[3] );
 	}
 	return vel_vector;

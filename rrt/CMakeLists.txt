@@ -116,6 +116,11 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
+## Static library for transformations (shared between executable and tests)
+add_library(rrt_core STATIC src/transformations.cpp)
+target_link_libraries(rrt_core ${catkin_LIBRARIES})
+add_dependencies(rrt_core ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
 ## Declare a C++ executable
 add_executable(${PROJECT_NAME}_node
   src/rrt_node.cpp
@@ -124,7 +129,6 @@ add_executable(${PROJECT_NAME}_node
   src/controller.cpp
   src/collisioncheck.cpp
   src/simulation.cpp
-  src/transformations.cpp
   src/motionplanner.cpp
 )
 
@@ -141,6 +145,7 @@ add_dependencies(${PROJECT_NAME}_node ${PROJECT_NAME}_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_node
+  rrt_core
   ${catkin_LIBRARIES}
 )
 
@@ -191,10 +196,10 @@ install(DIRECTORY include/${PROJECT_NAME}/
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_controls.cpp)
-# if(TARGET ${PROJECT_NAME}-test)
-#   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
-# endif()
+if(CATKIN_ENABLE_TESTING)
+  catkin_add_gtest(test_transformations test/test_transformations.cpp)
+  target_link_libraries(test_transformations rrt_core ${catkin_LIBRARIES})
+endif()
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)

@@ -70,15 +70,18 @@ Weights are loaded at runtime from the ROS parameter server (`motionplanner/weig
 After each successful node addition, a goal-directed expansion is attempted. Feasibility is checked geometrically: if the last added node lies outside both minimum-turning-radius circles centered on the goal pose, and the heading alignment is within ±22.5°, a direct goal connection is simulated.
 
 ### Vehicle Model
-The vehicle is modelled as a kinematic bicycle model extended with first-order actuator dynamics and an understeer gradient:
+The vehicle is modelled as a kinematic bicycle model extended with first-order actuator dynamics and a sideslip transfer function:
 
 ```
 ẋ     = v · cos(θ)
 ẏ     = v · sin(θ)
-θ̇     = (v / L) · tan(δ_eff)       // δ_eff accounts for understeer: Kus · v²
+θ̇     = (v / L) · tan(δ) · Gss     // Gss = 1 / (1 + (v/Vch)²)
 δ̇     = (δ_cmd - δ) / Td           // Steering actuator lag
-v̇     = (a_cmd - a) / Ta           // Acceleration actuator lag
+a     = dv/dt
+ȧ     = (a_cmd - a) / Ta           // Acceleration actuator lag
 ```
+
+The state is represented by the `VehicleState` struct (position, heading, steering, velocity, acceleration, time) with separate logging fields for waypoint tracking. The ODE returns a `StateDeriv` struct (7 fields), ensuring the integrator cannot accidentally write to logging-only fields. Goal poses use a dedicated `GoalPose` struct (x, y, heading, velocity).
 
 Parameters for Toyota Prius are derived from manufacturer specifications and the Kuwata et al. paper. A second vehicle preset (Talos) is also included.
 
@@ -93,16 +96,19 @@ Parameters for Toyota Prius are derived from manufacturer specifications and the
 
 ## Prerequisites
 
-- ROS Melodic (Ubuntu 18.04)
+- **Linux** (Ubuntu 18.04) or **WSL2 on Windows** (Windows 11 includes WSLg which provides the X display server needed for RViz)
+- ROS Melodic
 - `vision_msgs`
 - `robot_localization`
 - RViz (part of `ros-melodic-desktop-full`)
+
+> **Note:** RViz requires an X11 display server. On Windows this means you must run from a **WSL2 terminal** — native Windows terminals do not provide X11 forwarding. On Linux, display forwarding works out of the box.
 
 ## Installation
 
 ### Option A — Docker (recommended)
 
-Requires [Docker](https://docs.docker.com/get-docker/). On Windows, run from a **WSL2** terminal (Windows 11 includes WSLg, which provides the display server needed for RViz).
+Requires [Docker](https://docs.docker.com/get-docker/) and a Linux environment with an X display server. On Windows, run from a **WSL2** terminal.
 
 A pre-built image is published to GitHub Container Registry on every commit to master:
 
@@ -153,6 +159,35 @@ This starts:
 
 Set a goal by using the **2D Nav Goal** tool in RViz.
 
+## Testing
+
+Unit tests use the [catkin/gtest](http://wiki.ros.org/gtest) framework.
+
+### Docker (recommended)
+
+```bash
+docker build -t cl-rrt-test .
+docker run --rm cl-rrt-test bash -c \
+  "source /catkin_ws/devel/setup.bash && \
+   cd /catkin_ws && \
+   catkin_make run_tests && \
+   catkin_test_results build/test_results"
+```
+
+### Native ROS
+
+```bash
+cd ~/catkin_ws
+catkin_make run_tests
+catkin_test_results build/test_results
+```
+
+To run a single test suite:
+
+```bash
+rosrun rrt test_transformations
+```
+
 ## Configuration
 
 All tunable parameters are loaded from `rrt/launch/rrt.launch`:
@@ -171,7 +206,7 @@ The planner runs at 5 Hz by default. To change this:
 2. Update the mission planner loop rate in `mission_planner/`
 
 ### Adding collision detection
-The collision check is intentionally left as a stub (`collisioncheck.cpp`) to allow integration with any obstacle representation. Implement `myCollisionCheck()` to plug in an occupancy grid, object list, or point cloud. The function is called once per simulation step inside `Simulation::propagate()`.
+The collision check is intentionally left as a stub (`collisioncheck.cpp`) to allow integration with any obstacle representation. Implement `checkObsDistance()` to plug in an occupancy grid, object list, or point cloud. The function receives the current `VehicleState` and is called once per simulation step inside `Simulation::propagate()`.
 
 ### Changing the vehicle
 Vehicle parameters are defined in `rrt/include/rrt/vehicle.h`. Call `veh.setPrius()` or `veh.setTalos()`, or define a new preset using the same struct fields.

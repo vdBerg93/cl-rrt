@@ -1,5 +1,6 @@
 #include "rrt/headers.h"
 #include "rrt/globals.h"
+using namespace std;
 
 void enforceConstraints(const double& min, const double& max, double& val){
     val = std::max(std::min(val,max),min);
@@ -34,7 +35,6 @@ StateDeriv VehicleODE(ControlCommand& ctrl, const VehicleState& x, const Vehicle
     dx.da     = (1/veh.Ta)*(ctrl.ac-x.a);
     dx.dt     = 1;
 	// Constraints
-	enforceConstraints(veh.amin, veh.amax, dx.dv);
 	enforceConstraints(-veh.ddmax, veh.ddmax, dx.ddelta);
 	return dx;
 };
@@ -72,12 +72,6 @@ Simulation::Simulation(	const MyRRT& RRT, const VehicleState& state, MyReference
 	propagate(RRT, control,ref,veh);			// Predict vehicle trajectory
 };
 
-double getDistToLane(const double& x, const double& y, double S, const vector<double>& Cxy){
-	double Lx = (x - S*Cxy[1] + y*Cxy[1] - Cxy[1]*Cxy[2])/(pow(Cxy[1],2) + 1);
-	double Ly = S + Cxy[2] + (Cxy[1]*(x - S*Cxy[1] + y*Cxy[1] - Cxy[1]*Cxy[2]))/(pow(Cxy[1],2) + 1);
-	return sqrt( pow(Lx-x,2) + pow(Ly-y,2) );
-}
-
 /**
  * @brief Closed-loop simulation loop.
  *
@@ -95,8 +89,10 @@ double getDistToLane(const double& x, const double& y, double S, const vector<do
  *   - End of reference reached with velocity error < 0.1 m/s
  *   - Iteration limit (20s horizon)
  */
-void Simulation::propagate(const MyRRT& RRT, Controller control, const MyReference& ref, const Vehicle& veh){
+void Simulation::propagate(const MyRRT& RRT, Controller& control, const MyReference& ref, const Vehicle& veh){
 	bool wasNearGoal = false;
+	int endreachedStep = -1;
+	const int graceSteps = (int)(2.0 / sim_dt); // 2s grace period after end of reference
 
 	for(int i = 0; i<(20/sim_dt); i++){
 		sim_count++;
@@ -105,7 +101,7 @@ void Simulation::propagate(const MyRRT& RRT, Controller control, const MyReferen
 		StateDeriv dx = VehicleODE(ctrlCmd, x, veh);				// Get vehicle state transition
 		IntegrateEuler(x, dx, sim_dt, veh);							// Get new state
 		x.waypoint_id = control.IDwp;								// Add waypoint ID to vehicle state
-		x.ref_vel = ref.v[control.IDwp+LAlong];
+		x.ref_vel = ref.v[std::min(control.IDwp+LAlong, (int)ref.v.size()-1)];
 		x.steer_cmd = ctrlCmd.dc;									// Control logging
 		stateArray.push_back(x);									// Add state to statearray
 		// ****** CHECK COLLISION *****
@@ -126,7 +122,12 @@ void Simulation::propagate(const MyRRT& RRT, Controller control, const MyReferen
 
 		// Check acceleration limits
 		double ay = abs(x.v*dx.dtheta);
-		if ( ay + ay_road_max> 3){
+		double ay_road = 0;
+		if (RRT.Cxy.size() >= 3) {
+			double kappa_road = (2*RRT.Cxy[0]) / pow(1 + pow(RRT.Cxy[1] + 2*RRT.Cxy[0]*x.x, 2), 1.5);
+			ay_road = x.v*x.v*abs(kappa_road);
+		}
+		if ( ay + ay_road > 3){
 			endReached = false; fail_acclimit++;
 			return;
 		}
@@ -138,15 +139,21 @@ void Simulation::propagate(const MyRRT& RRT, Controller control, const MyReferen
 		double dist_to_goal = sqrt( pow(x.x-RRT.goalPose.x,2) + pow(x.y-RRT.goalPose.y,2));
 		double goal_heading_error = abs(angleDiff(x.theta,RRT.goalPose.theta));
 
-		// Stop simulation when end of reference is reached and velocity < terminate velocity
+		// Stop simulation when end of reference is reached and velocity has settled
 		double Verror = (x.v-ref.v.back());
-		if (control.endreached && abs(Verror) < 0.1){
-			if(wasNearGoal&&debug_sim){
-				ROS_WARN_STREAM("Was near goal but did not reach! Egoalvel= "<<Verror<<", Eprofile="<<(x.v-ref.v[control.IDwp]));
-				ROS_WARN_STREAM("Dist2goal= "<<dist_to_goal<<" head error= "<<goal_heading_error<<" dla= "<<ctrl_dla);
-				showVelocityProfile(ref);
+		if (control.endreached) {
+			if (endreachedStep < 0) endreachedStep = i;
+			if (abs(Verror) < 0.1) {
+				if(wasNearGoal&&debug_sim){
+					ROS_WARN_STREAM("Was near goal but did not reach! Egoalvel= "<<Verror<<", Eprofile="<<(x.v-ref.v[control.IDwp]));
+					ROS_WARN_STREAM("Dist2goal= "<<dist_to_goal<<" head error= "<<goal_heading_error<<" dla= "<<ctrl_dla);
+					showVelocityProfile(ref);
+				}
+				endReached = true; return;
 			}
-			endReached = true; return;
+			if (i - endreachedStep >= graceSteps) {
+				endReached = true; return;
+			}
 		}
 
 		// Goal reached check

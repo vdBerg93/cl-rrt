@@ -36,8 +36,8 @@ class OBB{
 
 // Primitives
 double getOBBdist(OBB a, OBB b);
-bool checkCollisionTra(const StateArray& T, const vector<car_msgs::Obstacle2D>& det, const VehicleState& carState);
+bool checkCollisionTra(const StateArray& T, const std::vector<car_msgs::Obstacle2D>& det, const VehicleState& carState);
 double checkObsDistance(const VehicleState& carState);
-vector<OBB> getOBBvector(const vector<car_msgs::Obstacle2D>& det, const double& t, const VehicleState& carState);
+std::vector<OBB> getOBBvector(const std::vector<car_msgs::Obstacle2D>& det, const double& t, const VehicleState& carState);
 
 #endif

@@ -1,5 +1,5 @@
 #include "rrt/headers.h"
-#include "rrt/globals.h"
+using namespace std;
 
 /**************************************
  **** TRANSFORMATIONS OF 2D POINTS ****
@@ -57,50 +57,23 @@ vector<double> findClosestPointOnArc(const double& Xcar, const double& Ycar, con
 }
 
 /**
- * @brief Transform a point from car-frame to road-frame (arc-length S, lateral offset rho).
+ * @brief Transform a point from car-frame to road-frame.
  *
- * 1. Find closest point on the road arc y(x) = c2*x^2 + c1*x + c0
- * 2. Compute arc-length S via polynomial fit Cxs
- * 3. Compute signed lateral offset rho (half-plane test)
- * 4. Rotate (S,rho) to the straightened road frame
+ * Delegates to transformPoseCarToRoad with a dummy heading.
  */
 void transformPointCarToRoad(double& Xcar, double& Ycar,const vector<double>& Cxy, const vector<double>& Cxs){
-	vector<double> Parc = findClosestPointOnArc(Xcar,Ycar,Cxy);
-	double Xarc{Parc[0]}, Yarc{Parc[1]};
-    double S = Cxs[0]*pow(Xarc,2) + Cxs[1]*Xarc + Cxs[2];
-	double rho = sqrt(pow(Xarc-Xcar,2) + pow(Yarc-Ycar,2));
-    double dydx = 2*Cxy[0]*Xarc + Cxy[1];
-	if(Ycar<(Yarc - Xarc*(Cxy[1] + 2*Xarc*Cxy[0]) + Xcar*(Cxy[1] + 2*Xarc*Cxy[0]))){
-		rho = -rho;
-	}
-
-    double theta = atan2(Cxy[1], 1);
-	double Xstraight = cos(theta)*S - sin(theta)*rho;
-	double Ystraight = sin(theta)*S + cos(theta)*rho + Cxy[2];
-
-	Xcar = Xstraight; Ycar = Ystraight;
+	double dummyH = 0.0;
+	transformPoseCarToRoad(Xcar, Ycar, dummyH, Cxy, Cxs);
 }
 
-// Transform a point from the curved-frame to straight-frame
+/**
+ * @brief Transform a point from road-frame to car-frame.
+ *
+ * Delegates to transformPoseRoadToCar with a dummy heading.
+ */
 void transformPointRoadToCar(double& Xstraight, double& Ystraight,const vector<double>& Cxy, const vector<double>& Cxs){
-    double Xroads = (Xstraight - Cxy[2]*Cxy[1] + Cxy[1]*Ystraight)/(pow(Cxy[1],2) + 1);
-    double Yroads = Cxy[2] + (Cxy[1]*(Xstraight - Cxy[2]*Cxy[1] + Cxy[1]*Ystraight))/(pow(Cxy[1],2) + 1);
-    double S = sqrt( pow(Xroads,2) + pow(Yroads-Cxy[2],2) );
-    double rho = sqrt( pow(Xroads-Xstraight,2) + pow(Yroads-Ystraight,2) );
-    if(Ystraight<(Cxy[1]*Xstraight + Cxy[2])){
-        rho = -rho;
-    }
-	double Xarc = -(Cxs[1] - sqrt(pow(Cxs[1],2) - 4*Cxs[0]*Cxs[2] + 4*Cxs[0]*S))/(2*Cxs[0]);
-    double Yarc = Cxy[0]*pow(Xarc,2) + Cxy[1]*Xarc + Cxy[2];
-    double dydx = 2*Cxy[0]*Xarc + Cxy[1];
-    double vx = 1;
-    double vy = dydx;
-    double L = sqrt ( pow(vx,2) + pow(vy,2) );
-    double nx = -(1/L)*dydx;
-    double ny = (1/L);
-    double Xroadc = Xarc + nx*rho;
-    double Yroadc = Yarc + ny*rho;
-	Xstraight = Xroadc; Ystraight = Yroadc;
+	double dummyH = 0.0;
+	transformPoseRoadToCar(Xstraight, Ystraight, dummyH, Cxy, Cxs);
 }
 
 /**************************************
@@ -118,7 +91,7 @@ void transformStateCarToWorld(VehicleState& state, const VehicleState& carPose){
 
 void transformStateCarToRoad(VehicleState& state, const vector<double>& Cxy, const vector<double>& Cxs, const Vehicle& veh){
 	vector<double> Parc = findClosestPointOnArc(state.x,state.y,Cxy);
-	double curvature = (2*Cxy[0])/ pow( ( pow(Cxy[1] + 2*Cxy[0]*Parc[0],2) + 1),(3/2));
+	double curvature = (2*Cxy[0])/ pow( ( pow(Cxy[1] + 2*Cxy[0]*Parc[0],2) + 1), 1.5);
 	transformPoseCarToRoad(state.x,state.y,state.theta,Cxy,Cxs);
 	double delta = atan(curvature*veh.L); 						// Required steer angle to follow road curvature at x=0
 	state.delta -= delta;											// Subtract steer angle to straighten states
@@ -128,7 +101,7 @@ void transformStateRoadToCar(VehicleState& state, const vector<double>& Cxy, con
 	transformPoseRoadToCar(state.x,state.y,state.theta,Cxy,Cxs);
 	vector<double> Parc = findClosestPointOnArc(state.x,state.y,Cxy);
 	// Update steer angle
-	double curvature = (2*Cxy[0])/ pow( ( pow(Cxy[1] + 2*Cxy[0]*Parc[0],2) + 1),(3/2));
+	double curvature = (2*Cxy[0])/ pow( ( pow(Cxy[1] + 2*Cxy[0]*Parc[0],2) + 1), 1.5);
 	double delta = atan(curvature*veh.L); 						// Required steer angle to follow road curvature at x=0
 	state.delta += delta;											// Subtract steer angle to straighten states
 }
@@ -190,109 +163,83 @@ void transformPoseRoadToCar(double& Xstraight, double& Ystraight, double& Hstrai
 }
 
 /*******************************************
+ ***** BATCH TRANSFORM HELPERS          *****
+ ******************************************/
+namespace {
+
+template <typename PointFn, typename StateFn>
+void transformPathImpl(vector<Path>& path, PointFn pointFn, StateFn stateFn) {
+	for (auto& seg : path) {
+		for (size_t i = 0; i != seg.ref.x.size(); i++)
+			pointFn(seg.ref.x[i], seg.ref.y[i]);
+		for (size_t i = 0; i != seg.tra.size(); i++)
+			stateFn(seg.tra[i]);
+	}
+}
+
+template <typename PointFn, typename StateFn>
+void transformNodesImpl(vector<Node>& nodes, PointFn pointFn, StateFn stateFn) {
+	for (auto& node : nodes) {
+		stateFn(node.state);
+		for (size_t i = 0; i != node.ref.x.size(); i++)
+			pointFn(node.ref.x[i], node.ref.y[i]);
+		for (size_t i = 0; i != node.tra.size(); i++)
+			stateFn(node.tra[i]);
+	}
+}
+
+} // anonymous namespace
+
+/*******************************************
  ***** TRANSFORMATION OF PATHS (T,Ref) *****
  ******************************************/
 void transformPathRoadToCar(vector<Path>& path, const vector<double>& Cxy, const vector<double>& Cxs, const Vehicle& veh){
-	int iter{0};
-	for(auto it = path.begin(); it!= path.end(); it++){
-		// Transform the reference
-		for(int i = 0; i != it->ref.x.size(); i++){
-			transformPointRoadToCar(it->ref.x[i],it->ref.y[i],Cxy,Cxs);
-		// Transform the trajectory
-		}for(int i = 0; i != it->tra.size(); i++){
-			transformStateRoadToCar(it->tra[i],Cxy,Cxs,veh);
-		}
-		iter++;
-	}
+	transformPathImpl(path,
+		[&](double& x, double& y) { transformPointRoadToCar(x, y, Cxy, Cxs); },
+		[&](VehicleState& s)       { transformStateRoadToCar(s, Cxy, Cxs, veh); });
 }
+
 void transformPathCarToWorld(vector<Path>& path, const VehicleState& worldState){
-	for(auto it = path.begin(); it!= path.end(); it++){
-		// Transform the reference
-		for(int i = 0; i != it->ref.x.size(); i++){
-			transformPointCarToWorld(it->ref.x[i],it->ref.y[i],worldState);
-		// Transform the trajectory
-		}for(int i = 0; i != it->tra.size(); i++){
-			transformStateCarToWorld(it->tra[i],worldState);
-		}
-	}
+	transformPathImpl(path,
+		[&](double& x, double& y) { transformPointCarToWorld(x, y, worldState); },
+		[&](VehicleState& s)       { transformStateCarToWorld(s, worldState); });
 }
 
 void transformPathWorldToCar(vector<Path>& path, const VehicleState& carPose){
-	for(auto itP = path.begin(); itP!=path.end(); itP++){
-		// Transform the reference
-		for(int i = 0; i!=(*itP).ref.x.size(); ++i){
-			transformPointWorldToCar((*itP).ref.x[i], (*itP).ref.y[i], carPose);
-		// Transform the state
-		}for(int i = 0; i!=(*itP).tra.size(); ++i){
-			transformStateWorldToCar((*itP).tra[i], carPose);
-		}
-	}
+	transformPathImpl(path,
+		[&](double& x, double& y) { transformPointWorldToCar(x, y, carPose); },
+		[&](VehicleState& s)       { transformStateWorldToCar(s, carPose); });
 }
 
 void transformPathCarToRoad(vector<Path>& path,const vector<double>& Cxy, const vector<double>& Cxs, const Vehicle& veh){
-	for(auto itP = path.begin(); itP!=path.end(); itP++){
-		// Transform the reference
-		for(int i = 0; i!=(*itP).ref.x.size(); ++i){
-			transformPointCarToRoad((*itP).ref.x[i], (*itP).ref.y[i],Cxy, Cxs);
-		// Transform the state
-		}for(int i = 0; i!=(*itP).tra.size(); ++i){
-			transformStateCarToRoad((*itP).tra[i], Cxy, Cxs, veh);
-		}
-	}
+	transformPathImpl(path,
+		[&](double& x, double& y) { transformPointCarToRoad(x, y, Cxy, Cxs); },
+		[&](VehicleState& s)       { transformStateCarToRoad(s, Cxy, Cxs, veh); });
 }
 
 /* NODE TRANSFORMATIONS */
 void transformNodesRoadToCar(vector<Node>& nodes, const VehicleState carState, const vector<double>& Cxy, const vector<double> Cxs, const Vehicle& veh){
-	for(auto it = nodes.begin(); it!= nodes.end(); it++){
-		transformStateRoadToCar(it->state,Cxy, Cxs, veh);
-		for(int i = 0; i!= it->ref.x.size(); i++){
-			transformPointRoadToCar(it->ref.x[i], it->ref.y[i], Cxy, Cxs);
-		}
-		for(int j = 0; j!=it->tra.size(); j++){
-			transformStateRoadToCar(it->tra[j],Cxy,Cxs,veh);
-		}
-	}
+	transformNodesImpl(nodes,
+		[&](double& x, double& y) { transformPointRoadToCar(x, y, Cxy, Cxs); },
+		[&](VehicleState& s)       { transformStateRoadToCar(s, Cxy, Cxs, veh); });
 }
 
 void transformNodesCarToRoad(vector<Node>& nodes, const VehicleState carState, const vector<double>& Cxy, const vector<double>& Cxs, const Vehicle& veh){
-	for(auto it = nodes.begin(); it!= nodes.end(); it++){
-			transformStateCarToRoad(it->state,Cxy, Cxs, veh);
-		for(int i = 0; i!= it->ref.x.size(); i++){
-			transformPointCarToRoad(it->ref.x[i], it->ref.y[i], Cxy, Cxs);
-		}
-		for(int j = 0; j!=it->tra.size(); j++){
-			transformStateCarToRoad(it->tra[j],Cxy,Cxs,veh);
-		}
-
-	}
+	transformNodesImpl(nodes,
+		[&](double& x, double& y) { transformPointCarToRoad(x, y, Cxy, Cxs); },
+		[&](VehicleState& s)       { transformStateCarToRoad(s, Cxy, Cxs, veh); });
 }
 
 void transformNodesCarToworld(vector<Node>& nodes, const VehicleState carState){
-	for(auto it = nodes.begin(); it!= nodes.end(); it++){
-		transformStateCarToWorld(it->state,carState);
-		// Loop through reference and transform
-		for(int i = 0; i!=it->ref.x.size(); i++){
-			transformPointCarToWorld(it->ref.x[i],it->ref.y[i],carState);
-		}
-		// Loop through trajectory and transform (position AND heading)
-		for(int j = 0; j!=it->tra.size(); j++){
-			transformStateCarToWorld(it->tra[j], carState);
-		}
-	}
+	transformNodesImpl(nodes,
+		[&](double& x, double& y) { transformPointCarToWorld(x, y, carState); },
+		[&](VehicleState& s)       { transformStateCarToWorld(s, carState); });
 }
 
 void transformNodesWorldToCar(vector<Node>& nodes, const VehicleState carState){
-	for(auto it = nodes.begin(); it!= nodes.end(); it++){
-		transformStateWorldToCar(it->state,carState);
-		// Loop through reference and transform
-		for(int i = 0; i!=it->ref.x.size(); i++){
-			transformPointWorldToCar(it->ref.x[i],it->ref.y[i],carState);
-		}
-		// Loop through trajectory and transform (position AND heading)
-		for(int j = 0; j!=it->tra.size(); j++){
-			transformStateWorldToCar(it->tra[j], carState);
-		}
-	}
+	transformNodesImpl(nodes,
+		[&](double& x, double& y) { transformPointWorldToCar(x, y, carState); },
+		[&](VehicleState& s)       { transformStateWorldToCar(s, carState); });
 }
 
 // Rotate the velocity vector to car frame

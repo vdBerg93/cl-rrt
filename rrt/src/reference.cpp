@@ -4,6 +4,7 @@
 ---------------------------------------*/
 #include "rrt/headers.h"
 #include "rrt/globals.h"
+using namespace std;
 
 /**
  * @brief Generate a linear reference path from the last node reference point to the sample.
@@ -11,7 +12,7 @@
  * The reference is a straight line from the end of the parent node's reference
  * to the sample point, discretized at ref_res spacing.
  */
-MyReference getReference(geometry_msgs::Point sample, Node node, signed int dir){
+MyReference getReference(geometry_msgs::Point sample, const Node& node, int dir){
 	if(debug_mode){
 		cout<<"Generating reference..."<<endl;
 	}
@@ -33,7 +34,7 @@ MyReference getReference(geometry_msgs::Point sample, Node node, signed int dir)
  * (aligned with goal heading). Segment 2: extends beyond the goal by the
  * lookahead distance to allow the controller to track through the goal.
  */
-MyReference getGoalReference(const Vehicle& veh, Node node, const GoalPose& goalPose){;
+MyReference getGoalReference(const Vehicle& veh, const Node& node, const GoalPose& goalPose){
 
 	double dla_c = ctrl_mindla - ctrl_tla*ctrl_dlavmin;
 	double dla_end = std::max(ctrl_mindla,dla_c+ctrl_tla*std::abs(goalPose.v));
