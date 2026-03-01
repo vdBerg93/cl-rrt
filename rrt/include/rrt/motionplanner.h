@@ -3,10 +3,10 @@
 
 struct Path{
 	MyReference ref;
-	vector<state_type> tra;
+	StateArray tra;
 };
 
-void predictState(vector<double>& X0, const Vehicle& veh, double t);
+void predictState(VehicleState& X0, const Vehicle& veh, double t);
 
 // Perhaps unnessecary
 void transformPoseRoadToCar(double& Xstraight, double& Ystraight, double& Hstraight, const vector<double>& Cxy, const vector<double>& Cxs);
@@ -19,9 +19,8 @@ void filterMPCmessage(car_msgs::Trajectory& msg);
 // Motion planner object for handling services, callbacks & clients
 struct MotionPlanner{
 		vector<Path> motionplan; 		// Current motion plan in global coordinates
-		// vector<Node> lastNodes;			// Log best path for reducing path shifting
 		vector<Node> bestNodes;			// Logging best path as nodes
-		state_type state;
+		VehicleState state;
 		ros::ServiceClient* clientPtr;			// Pointer to client
 		ros::Publisher* pubPtr; 				// Pointer to Rviz markers
 		ros::Publisher* pubPlan;
@@ -35,10 +34,7 @@ struct MotionPlanner{
 		void publishBestPath(const vector<Path>& path);
 		void storeCommit(const vector<Path>& commit);
 		bool resetPlanner(car_msgs::resetplanner::Request& req, car_msgs::resetplanner::Response& resp);
-		MotionPlanner(){
-			vector<double> emptystate = {0,0,0,0,0,0};
-			state = emptystate;
-		}
+		MotionPlanner() = default;
 };
 
 visualization_msgs::Marker clearMessage();

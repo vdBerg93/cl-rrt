@@ -4,41 +4,47 @@
 
 
 //*******************************
-// CONTROLLER CLASS FUNCTIONS 
+// CONTROLLER CLASS FUNCTIONS
 //*******************************
 
-/** Update controller lookahead distance
- * @param v Current velocity
-*/
+/**
+ * @brief Update velocity-dependent lookahead distance.
+ *
+ * dla = max(dla_min, c + tla * |v|)  where c = dla_min - tla * dlavmin
+ * This ensures the preview point moves further ahead at higher speeds.
+ */
 void updateLookahead(double v){
-	double dla_c = ctrl_mindla - ctrl_tla*ctrl_dlavmin; 
+	double dla_c = ctrl_mindla - ctrl_tla*ctrl_dlavmin;
 	ctrl_dla = std::max(ctrl_mindla,dla_c+ctrl_tla*std::abs(v));
 }
 
-/** Update the reference resolution
- * @param v Current velocity
- */
 void updateReferenceResolution(double v){
     ref_res = std::max(abs(v)*ref_int,ref_mindist);
 }
 
-Controller::Controller(const MyReference& ref, const state_type& x){
-    updateLookahead(x[4]);      // Update the lookahead distance (velocity dependent)
+Controller::Controller(const MyReference& ref, const VehicleState& x){
+    updateLookahead(x.v);       // Update the lookahead distance (velocity dependent)
     IDwp = 0; endreached = 0;   // Lateral control initialization
     iE = 0;                     // Longitudinal control error integral
     updateWaypoint(ref,x);      // Initialize the first waypoint
 }
 
-ControlCommand Controller::getControls(const MyReference& ref, const Vehicle& veh, const state_type& x){
+ControlCommand Controller::getControls(const MyReference& ref, const Vehicle& veh, const VehicleState& x){
     updateWaypoint(ref, x); // Update the closest waypoint with the new preview point
     ControlCommand C {getSteerCommand(ref, x, veh),getAccelerationCommand(veh, ref, x)};
     return C;
 }
 int LAlong = 2;
 
-double Controller::getAccelerationCommand(const Vehicle& veh, const MyReference& ref, const state_type& x){
-    // int LAlong = 2;                         // Look additional x points in front of preview point (else velocity error could be zero)
-    double E = ref.v[IDwp+LAlong]-x[4];            // Error
+/**
+ * @brief PI longitudinal controller with back-calculation anti-windup.
+ *
+ * aCmd = Kp * e + Ki * integral(e)
+ * The integral is only accumulated when the output is unsaturated,
+ * preventing integrator windup against the actuator limits.
+ */
+double Controller::getAccelerationCommand(const Vehicle& veh, const MyReference& ref, const VehicleState& x){
+    double E = ref.v[IDwp+LAlong]-x.v;            // Error
 
     // Calculate raw command before saturation
     double aRaw = ctrl_Kp*E + ctrl_Ki*iE;
@@ -51,21 +57,30 @@ double Controller::getAccelerationCommand(const Vehicle& veh, const MyReference&
     return aCmd;
 };
 
-double Controller::getSteerCommand(const MyReference& ref, const state_type& x, const Vehicle& veh){
-    ym = getLateralError(ref,x,IDwp,Ppreview);                          // Get the lateral error at preview point, perpendicular to vehicle 
-    double cmdDelta = 2*((veh.L+veh.Kus*x[4]*x[4])/pow(ctrl_dla,2))*ym; // Single preview point control (Schmeitz, 2017, "Towards a Generic Lateral Control Concept ...")
+/**
+ * @brief Schmeitz single-preview-point lateral controller.
+ *
+ * delta_cmd = 2 * (L + Kus*v^2) / dla^2 * ym
+ * where ym is the lateral error at the preview point, computed via
+ * Lagrange interpolation of three reference points transformed to
+ * the preview point's local frame.
+ *
+ * Reference: Schmeitz, 2017, "Towards a Generic Lateral Control Concept ..."
+ */
+double Controller::getSteerCommand(const MyReference& ref, const VehicleState& x, const Vehicle& veh){
+    ym = getLateralError(ref,x,IDwp,Ppreview);                          // Get the lateral error at preview point, perpendicular to vehicle
+    double cmdDelta = 2*((veh.L+veh.Kus*x.v*x.v)/pow(ctrl_dla,2))*ym; // Single preview point control (Schmeitz, 2017, "Towards a Generic Lateral Control Concept ...")
     return checkSaturation(-veh.dmax,veh.dmax,cmdDelta);;               // Constrain with actuator saturation limits
 };
 
-void Controller::updateWaypoint(const MyReference& ref, const state_type& x){
-    updateLookahead(x[4]);  // Update the lookahead distance
+void Controller::updateWaypoint(const MyReference& ref, const VehicleState& x){
+    updateLookahead(x.v);  // Update the lookahead distance
     // Use lookahead distance to update the preview point
-    Ppreview.x = x[0] + ctrl_dla*ref.dir*std::cos(x[2]);
-    Ppreview.y = x[1] + ctrl_dla*ref.dir*std::sin(x[2]);
+    Ppreview.x = x.x + ctrl_dla*ref.dir*std::cos(x.theta);
+    Ppreview.y = x.y + ctrl_dla*ref.dir*std::sin(x.theta);
     // Update the waypoint ID
     IDwp = findClosestPoint(ref, Ppreview, IDwp);
 
-    // if (IDwp>=(ref.x.size()-2)){
     if (IDwp>=ref.x.size()-1-LAlong){
         endreached = 1;
     };
@@ -74,7 +89,14 @@ void Controller::updateWaypoint(const MyReference& ref, const state_type& x){
     }
 };
 
-double getLateralError(const MyReference &ref, const state_type &x, const int& IDwp,const geometry_msgs::Point& Ppreview){
+/**
+ * @brief Compute lateral error at the preview point via Lagrange interpolation.
+ *
+ * 1. Select 3 reference points around the closest waypoint
+ * 2. Transform them to the preview point's local frame (homogeneous transform)
+ * 3. Perform 2nd-order Lagrange interpolation to find the y-intercept (lateral error)
+ */
+double getLateralError(const MyReference &ref, const VehicleState &x, const int& IDwp,const geometry_msgs::Point& Ppreview){
     // Determine the ID's of the reference that will be used for lateral error calculation
     int IDmin, IDmax;
     if (IDwp==0){
@@ -90,11 +112,11 @@ double getLateralError(const MyReference &ref, const state_type &x, const int& I
     double xval[3] {ref.x[IDmin],ref.x[IDmin+1],ref.x[IDmax]};
     double yval[3] {ref.y[IDmin],ref.y[IDmin+1],ref.y[IDmax]};
     // Extend preview point with vehicle heading
-    double Xpreview[3] {Ppreview.x,Ppreview.y,x[2]};
+    double Xpreview[3] {Ppreview.x,Ppreview.y,x.theta};
     // Transform the extracted reference into local coordinates of the preview point
     double Txval[3], Tyval[3];
     transformToVehicle(xval,yval,Txval,Tyval,Xpreview);
-    // Find the coordinate of local x-axis intersection to get the lateral error 
+    // Find the coordinate of local x-axis intersection to get the lateral error
     double ym = interpolate(Txval,Tyval);
     return ym;
 }
@@ -107,33 +129,27 @@ int findClosestPoint(const MyReference& ref, const geometry_msgs::Point& point, 
     for(int i = ID; i<ref.x.size(); i++){
         di = (ref.x[i]-point.x)*(ref.x[i]-point.x) + (ref.y[i]-point.y)*(ref.y[i]-point.y);
         // If next point is closer, update minimum
-        if(di<dmin){ 
+        if(di<dmin){
             dmin = di;
             idmin = i;
         }
-        // else the points are increasing in distance (linear reference)
-        // else{
-        //     return idmin;
-        // }
     }
     return idmin;
 };
 
-void transformToVehicle(double (&xval)[3],double (&yval)[3],double (&Txval)[3],double (&Tyval)[3],const double (&x)[3]){
-    // Transform to vehicle coordinates of preview point with a homogenous transformation.
-    //      H = [R,d;zeros(1,2),1];
-    // 1. Define the rotation matrix and position vector
-    //      R = [cos(X3),-sin(X3);sin(X3),cos(X3)];
-    //      d = [X1;X2];
-    // 2. Define the inverse of the homogenous transformation matrix
-    //      Hinv = [R',-R'*d;zeros(1,2),1];
-    // 3. Loop through the points and transform them
-    //      pointTransformed = Hinv*[Rx;Ry;1];
+/**
+ * @brief Homogeneous transformation of reference points to the preview point's local frame.
+ *
+ * H = [R, d; 0 0 1],  Hinv = [R', -R'd; 0 0 1]
+ * where R = [cos(theta), -sin(theta); sin(theta), cos(theta)]
+ * and d = [pose[0]; pose[1]].
+ *
+ * @param pose  3-element array {preview.x, preview.y, heading} — NOT a VehicleState
+ */
+void transformToVehicle(double (&xval)[3],double (&yval)[3],double (&Txval)[3],double (&Tyval)[3],const double (&pose)[3]){
     for(int i = 0; i<=2; i++){
-        Txval[i] = xval[i]*cos(x[2]) - x[0]*cos(x[2]) - yval[i]*sin(x[2]) + x[1]*sin(x[2]);
-        Tyval[i] = yval[i]*cos(x[2]) - x[1]*cos(x[2]) - xval[i]*sin(x[2]) + x[0]*sin(x[2]);  // yL = -sin(θ)*(xW-x0) + cos(θ)*(yW-y0)
-        	// double Xc = Xw*cos(carPose[2]) - carPose[0]*cos(carPose[2]) - carPose[1]*sin(carPose[2]) + Yw*sin(carPose[2]);
-            // double Yc = Yw*cos(carPose[2]) - carPose[1]*cos(carPose[2]) + carPose[0]*sin(carPose[2]) - Xw*sin(carPose[2]);
+        Txval[i] = xval[i]*cos(pose[2]) - pose[0]*cos(pose[2]) - yval[i]*sin(pose[2]) + pose[1]*sin(pose[2]);
+        Tyval[i] = yval[i]*cos(pose[2]) - pose[1]*cos(pose[2]) - xval[i]*sin(pose[2]) + pose[0]*sin(pose[2]);  // yL = -sin(θ)*(xW-x0) + cos(θ)*(yW-y0)
     }
     return;
 }

@@ -20,7 +20,7 @@ class OBB{
         float w;           // Width
         float h;           // Height
         float o;           // Orientation
-        
+
         OBB(Vector2D _pos, float _w, float _h, float _o): pos(_pos), w(_w), h(_h), o(_o){
             setVertices();
             setNorms();
@@ -36,9 +36,8 @@ class OBB{
 
 // Primitives
 double getOBBdist(OBB a, OBB b);
-bool checkCollisionTra(const StateArray& T, const vector<car_msgs::Obstacle2D>& det, const vector<double>& carState);
-// double checkObsDistance(const vector<double>& states, const vector<car_msgs::Obstacle2D>& det, const vector<double>& carState);
-double checkObsDistance(const vector<double>& carState);
-vector<OBB> getOBBvector(const vector<car_msgs::Obstacle2D>& det, const double& t, const vector<double>& carState);
+bool checkCollisionTra(const StateArray& T, const vector<car_msgs::Obstacle2D>& det, const VehicleState& carState);
+double checkObsDistance(const VehicleState& carState);
+vector<OBB> getOBBvector(const vector<car_msgs::Obstacle2D>& det, const double& t, const VehicleState& carState);
 
 #endif

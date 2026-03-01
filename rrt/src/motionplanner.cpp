@@ -11,35 +11,32 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	if(debug_mode){cout<<"Goal =["<<req.goal[0]<<", "<<req.goal[1]<<", "<<req.goal[2]<<", "<<req.goal[3]<<"]"<<endl;}
 	// Update variables
 	Vehicle veh; veh.setPrius();											// Initialize vehicle parameters
-	vector<double> worldState = state;										// State in world coordinates
-	vector<double> carPose = transformStateToLocal(worldState);				// State in car coordinates
-	updateLookahead(carPose[4]);	updateReferenceResolution(carPose[4]); 	// Update planner parameters
+	VehicleState worldState = state;										// State in world coordinates
+	VehicleState carPose = transformStateToLocal(worldState);				// State in car coordinates
+	updateLookahead(carPose.v);	updateReferenceResolution(carPose.v); 	// Update planner parameters
 	vmax = req.vmax; vgoal = req.goal[3];									// Update globals
 	updateObstacles();														// Update obstacles
-	
-	// ROS_INFO_STREAM("Considering "<<det.size()<<" obstacles.");
 
 	transformNodesWorldToCar(bestNodes,worldState);			// Transform last path to new coordinate frame
-	MyRRT RRT(req.goal,req.laneShifts,req.Cxy, req.bend);	// Initialize RRT planner
+	GoalPose goal(req.goal[0], req.goal[1], req.goal[2], req.goal[3]);
+	MyRRT RRT(goal,req.laneShifts,req.Cxy, req.bend);		// Initialize RRT planner
 	RRT.det = det; RRT.carState = carPose; 					// UPDATE OBSTACLE DETECTIONS and car state
 
 	ROS_INFO_STREAM("Initializing tree...");
-	
+
 	if (!commit_path){
 		bestNodes.clear();
 	}
 
-	initializeTree(RRT,veh,bestNodes,carPose); assert(RRT.tree.size()>0);	
-	
-	// for(auto it = RRT.tree.begin(); it!=RRT.tree.end(); it++){	showNode(*it);	}		// Remove comment to print nodes
+	initializeTree(RRT,veh,bestNodes,carPose); assert(RRT.tree.size()>0);
 
 	//*******************************************
-	// TREE BUILDING LOOP 
+	// TREE BUILDING LOOP
 	// ******************************************
 	Timer timer(200); int iter = 0;						// <---- MOTION PLANNER UPDATE RATE!
 	ROS_INFO_STREAM("Starting the tree build...");
 	for(iter; timer.Get(); iter++){
-		expandTree(veh, RRT, pubPtr, det, req.Cxy); 
+		expandTree(veh, RRT, pubPtr, det, req.Cxy);
 	};
 	ROS_INFO_STREAM("Expansion complete. Tree size is "<<RRT.tree.size()<<" after "<<iter<<" iterations");
 	ROS_INFO_STREAM("Fail counters | col: "<<fail_collision<<" iter: "<<fail_iterlimit<<" acc: "<<fail_acclimit<<" sim it: "<<sim_count);
@@ -48,12 +45,12 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	// Select a best path and tranform it to world coordinates
 	// ********************************************************
 	if (!commit_path){	bestNodes.clear();	}
-	bestNodes = extractBestPath(RRT.tree,pubPtr);	// Select best path 
+	bestNodes = extractBestPath(RRT.tree,pubPtr);	// Select best path
 	// Transform nodes to world coordinates
 	if(debug_mode){ cout<<"transforming nodes to global..."<<endl;}
 	transformNodesCarToworld(bestNodes,worldState);
 	// No solution found
-	if(bestNodes.size()==0){ 
+	if(bestNodes.size()==0){
 		ROS_ERROR_STREAM("No solution found. Returning without response."); return;
 	}
 	// Print best path to console
@@ -70,14 +67,13 @@ void MotionPlanner::planMotion(car_msgs::MotionRequest req){
 	filterMPCmessage(msg);			// Reduce number of waypoints in path message. Space x meters apart.
 	if(msg.x.size()>=3){
 		pubMPC->publish(msg);
-		publishPathToRviz(plan,pubPtr);	
+		publishPathToRviz(plan,pubPtr);
 	}
 
 	ROS_INFO_STREAM("Replied to request..."<<endl<<"-------------------------");
 }
 
 // Get updated obstacles from obstacle detection node
-// Replace this function with obstaclegrid
 bool MotionPlanner::updateObstacles(){
 	ROS_WARN_STREAM_ONCE("In motionplanner: adjust MotionPlanner::updateObstacles() with occupancy grid message");
     car_msgs::getobstacles srv;
@@ -89,8 +85,9 @@ bool MotionPlanner::updateObstacles(){
 void MotionPlanner::updateState(car_msgs::State msg){
 	// state = [x,y,theta,delta,v,a]
 	ROS_WARN_STREAM_ONCE("In MotionPlanner::updateState: edit state message to fit Prius");
-	state.clear(); 	state.insert(state.begin(), msg.state.begin(), msg.state.end());
-	assert(state.size()==6);
+	assert(msg.state.size()==6);
+	state = VehicleState(msg.state[0], msg.state[1], msg.state[2],
+	                     msg.state[3], msg.state[4], msg.state[5]);
 }
 
 
@@ -99,24 +96,28 @@ bool MotionPlanner::resetPlanner(car_msgs::resetplanner::Request& req, car_msgs:
 	motionplan.clear(); 	return true;
 }
 
-// Prepare motion response message
+/**
+ * @brief Generate MPC trajectory message from the planned path.
+ *
+ * Iterates over path segments and trajectory states, skipping duplicate
+ * positions (which occur when v=0 since dx=v*cos=0, dy=v*sin=0).
+ */
 car_msgs::Trajectory generateMPCmessage(const vector<Path>& path){
 	car_msgs::Trajectory tra;
 	for(auto it = path.begin(); it!=path.end(); ++it){
 		for(int i = 1; i<it->tra.size(); i++){
 			// Skip states where position hasn't advanced (occurs when v=0: dx[0]=v*cos=0, dx[1]=v*sin=0)
-			if(!tra.x.empty() && tra.x.back()==it->tra[i][0] && tra.y.back()==it->tra[i][1]){
+			if(!tra.x.empty() && tra.x.back()==it->tra[i].x && tra.y.back()==it->tra[i].y){
 				continue;
 			}
-			tra.x.push_back(it->tra[i][0]);
-			tra.y.push_back(it->tra[i][1]);
-			tra.theta.push_back(it->tra[i][2]);
-			tra.delta.push_back(it->tra[i][3]);
-			tra.v.push_back(it->tra[i][4]);
-			// tra.v.push_back(6);
-			tra.a.push_back(it->tra[i][5]);
-			tra.a_cmd.push_back(it->tra[i][8]);
-			tra.d_cmd.push_back(it->tra[i][9]);
+			tra.x.push_back(it->tra[i].x);
+			tra.y.push_back(it->tra[i].y);
+			tra.theta.push_back(it->tra[i].theta);
+			tra.delta.push_back(it->tra[i].delta);
+			tra.v.push_back(it->tra[i].v);
+			tra.a.push_back(it->tra[i].a);
+			tra.a_cmd.push_back(it->tra[i].ref_vel);
+			tra.d_cmd.push_back(it->tra[i].steer_cmd);
 		}
 	}
 
@@ -173,17 +174,17 @@ visualization_msgs::Marker generateMessage(const vector<Path>& path){
     msg.color.g = 1.0;
     msg.color.a = 1.0;
     msg.lifetime = ros::Duration(3600);
-    
+
     geometry_msgs::Point p;
 	for(auto it = path.begin(); it!=path.end(); ++it){
 		for(auto it2 = it->tra.begin(); it2!=it->tra.end(); ++it2){
-			p.x = (*it2)[0];
-			p.y = (*it2)[1];
+			p.x = it2->x;
+			p.y = it2->y;
 			p.z = 0;
 			msg.points.push_back(p);
 		}
 	}
-    return msg;    
+    return msg;
 }
 
 // Publish a path to Rviz
@@ -191,7 +192,7 @@ void publishPathToRviz(const vector<Path>& path, ros::Publisher* ptrPub){
 	visualization_msgs::Marker msg = generateMessage(path);
 	visualization_msgs::MarkerArray msg2; msg2.markers.push_back(msg);
 	ptrPub->publish(msg2);
-}   
+}
 
 // Commit to a path section
 vector<Path> getCommittedPath(vector<Node> bestPath, double& Tp){
@@ -202,28 +203,35 @@ vector<Path> getCommittedPath(vector<Node> bestPath, double& Tp){
 		for(int j = 0; j!=((*it).tra.size()); ++j){				// Start at second entry to avoid double values in path when merging sections
 			Tp += sim_dt;										// Update committed time
 			path.tra.push_back(it->tra[j]);						// Add state to committed path
-			int IDwp = it->tra[j][7];						// Add waypoint for committed state
+			int IDwp = (int)it->tra[j].waypoint_id;			// Add waypoint for committed state
 			path.ref.x.push_back(it->ref.x[IDwp]);				// push back waypoint
-			path.ref.y.push_back(it->ref.y[IDwp]);				// push back waypoint	
+			path.ref.y.push_back(it->ref.y[IDwp]);				// push back waypoint
 			path.ref.v.push_back(it->ref.v[IDwp]);				// push back waypoint
 			if (((Tp)>=Tcommit)&&(path.ref.x.size()>=3)){		// Path should be at least three points long for controller to work
-				commit.push_back(path);							
+				commit.push_back(path);
 				return commit;
 			}
 		}
 		commit.push_back(path);
 	}
-	return commit;	
+	return commit;
 }
 
-// Future state prediction
-void predictState(vector<double>& X0, const Vehicle& veh, double t){
+/**
+ * @brief Predict future vehicle state using simplified kinematic model.
+ *
+ * Integrates x, y, theta forward in time using Euler steps of dt=0.01s,
+ * assuming constant velocity and steering angle.
+ */
+void predictState(VehicleState& X0, const Vehicle& veh, double t){
 	double dt = 0.01;
 	for(int i = 0; i!=int(t/dt); i++){
-		vector<double> dx = {X0[4]*cos(X0[2]), X0[4]*sin(X0[2]), (X0[4]/veh.L)*tan(X0[3])};
-		for(int i = 0; i!=dx.size(); i++){
-			X0[i] += dt*dx[i];
-		}
+		double dx = X0.v*cos(X0.theta);
+		double dy = X0.v*sin(X0.theta);
+		double dtheta = (X0.v/veh.L)*tan(X0.delta);
+		X0.x     += dt*dx;
+		X0.y     += dt*dy;
+		X0.theta += dt*dtheta;
 	}
 }
 
@@ -240,16 +248,15 @@ car_msgs::MotionResponse preparePathMessage(const vector<Path>& path){
 		resp.ref.push_back(ref);
 		// Prepare trajectory message
 		car_msgs::Trajectory tra;
-		// for(int i = 0; i<it->tra.size(); i++){
 		for(int i = 1; i<it->tra.size(); i++){
-			tra.x.push_back(it->tra[i][0]);
-			tra.y.push_back(it->tra[i][1]);
-			tra.theta.push_back(it->tra[i][2]);
-			tra.delta.push_back(it->tra[i][3]);
-			tra.v.push_back(it->tra[i][4]);
-			tra.a.push_back(it->tra[i][5]);
-			tra.a_cmd.push_back(it->tra[i][8]);
-			tra.d_cmd.push_back(it->tra[i][9]);
+			tra.x.push_back(it->tra[i].x);
+			tra.y.push_back(it->tra[i].y);
+			tra.theta.push_back(it->tra[i].theta);
+			tra.delta.push_back(it->tra[i].delta);
+			tra.v.push_back(it->tra[i].v);
+			tra.a.push_back(it->tra[i].a);
+			tra.a_cmd.push_back(it->tra[i].ref_vel);
+			tra.d_cmd.push_back(it->tra[i].steer_cmd);
 		}
 		resp.tra.push_back(tra);
 	}
@@ -269,12 +276,6 @@ vector<Path> convertNodesToPath(const vector<Node> &path){
 	}
 	return result;
 }
-
-// Publish the motion plan
-// void MotionPlanner::publishPlan(const vector<Path>& plan){
-// 	car_msgs::MotionResponse resp = preparePathMessage(plan);
-// 	(*pubPlan).publish(resp);
-// }
 
 // Publish the best path
 void MotionPlanner::publishBestPath(const vector<Path>& path){
@@ -309,17 +310,17 @@ void showPath(const vector<Path>& path){
 		cout<<"]"<<endl;
 		cout<<"Trax = [";
 		for(int i = 0; i!=it->tra.size(); i++){
-			cout<<it->tra[i][0]<<", ";
+			cout<<it->tra[i].x<<", ";
 		}
 		cout<<"]"<<endl;
 		cout<<"Tray = [";
 		for(int i = 0; i!=it->tra.size(); i++){
-			cout<<it->tra[i][1]<<", ";
+			cout<<it->tra[i].y<<", ";
 		}
 		cout<<"]"<<endl;
 		cout<<"Trav = [";
 		for(int i = 0; i!=it->tra.size(); i++){
-			cout<<it->tra[i][4]<<", ";
+			cout<<it->tra[i].v<<", ";
 		}
 		cout<<"]"<<endl;
 	}
@@ -332,9 +333,6 @@ void showNode(const Node& node){
 	cout<<"Parent= "<<node.parentID<<", Goal reached= "<<node.goalReached<<endl;
 	cout<<"Refx = ["<<node.ref.x.front()<<", "<<node.ref.x.back()<<"]"<<endl;
 	cout<<"Refy = ["<<node.ref.y.front()<<", "<<node.ref.y.back()<<"]"<<endl;
-	cout<<"state= [";
-	for(auto it = node.state.begin(); it!=node.state.end(); ++it){
-		cout<<*it<<", ";
-	}
-	cout<<endl;
+	cout<<"state= ["<<node.state.x<<", "<<node.state.y<<", "<<node.state.theta<<", "
+	    <<node.state.delta<<", "<<node.state.v<<", "<<node.state.a<<"]"<<endl;
 }

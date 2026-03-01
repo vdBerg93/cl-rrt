@@ -32,17 +32,17 @@ struct MyReference{
     double aend;
 };
 
-struct Node{        
-    vector<double> state;   // Node state
-    signed int parentID;           // Parent ID
-    vector<int> children;   // Children id's
-    MyReference ref;        // Reference to reach node
-    float costE;            // Costfunction for exploration
-    float costS;            // Costfunction for selecting the best path in structured driving
-    bool goalReached;       // Boolean stating whether goal has been reached
-    vector<state_type> tra;
+struct Node{
+    VehicleState state;         // Node state
+    signed int parentID;        // Parent ID
+    vector<int> children;       // Children id's
+    MyReference ref;            // Reference to reach node
+    float costE;                // Costfunction for exploration
+    float costS;                // Costfunction for selecting the best path in structured driving
+    bool goalReached;           // Boolean stating whether goal has been reached
+    StateArray tra;
     Node(){};
-    Node( vector<double> _state, int _parentID, MyReference _ref, vector<state_type> _tra, double _costE, double _costS, bool _goal) : state(_state), parentID(_parentID), ref(_ref), tra(_tra),costE(_costE), costS(_costS), goalReached(_goal){};
+    Node( VehicleState _state, int _parentID, MyReference _ref, StateArray _tra, double _costE, double _costS, bool _goal) : state(_state), parentID(_parentID), ref(_ref), tra(_tra),costE(_costE), costS(_costS), goalReached(_goal){};
     void addChild(int child){children.push_back(child);}
 };
 
@@ -54,51 +54,49 @@ class MyRRT{
         bool reverseAllowed;
         bool goalReached;
         bool bend;
-        vector<double> goalPose;
+        GoalPose goalPose;
         signed int direction;
         vector<double> laneShifts;   // Lane shifts. 1st element is goal lane. 2nd element is other lane
         vector<double> Cxy;
 
         // For other functions only (sim. etc)
         vector<car_msgs::Obstacle2D> det;
-        vector<double> carState;
+        VehicleState carState;
         double Wcost[5];
 
         // Tree iniitalization
-        MyRRT(const vector<double>& _goalPose, const vector<double>& _laneShifts, const vector<double>& _Cxy, const bool& _bend);
-        void addInitialNode(const vector<double>& state);
+        MyRRT(const GoalPose& _goalPose, const vector<double>& _laneShifts, const vector<double>& _Cxy, const bool& _bend);
+        void addInitialNode(const VehicleState& state);
         // Tree operations
         void addNode(Node node);
         Node getNode(int ID);
         void addNodes(vector<Node> nodes);
         void getBestPath();
         vector<Node> tree;
-    private: 
-        
-        
-        
-};
-// double initializeTree(MyRRT& RRT, const Vehicle& veh, vector<MyReference>& path, vector<double> carState);
-void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, vector<double>& carState);
+    private:
 
-geometry_msgs::Point sampleAroundVehicle(vector<double> sampleBounds);
-geometry_msgs::Point sampleAroundVehicle(const vector<double> goalPose);
+
+
+};
+void initializeTree(MyRRT& RRT, const Vehicle& veh, vector<Node>& nodes, VehicleState& carState);
+
+geometry_msgs::Point sampleAroundVehicle(const GoalPose& goalPose);
 geometry_msgs::Point sampleOnLane(const vector<double>& Cxy, vector<double> laneShifts, double Lmax);
 void expandTree(Vehicle& veh, MyRRT& RRT, ros::Publisher* ptrPub, const vector<car_msgs::Obstacle2D>& det, const vector<double>& Cxy);
-vector<int> sortNodesExplore(const MyRRT& rrt, const geometry_msgs::Point& sample);
-vector<int> sortNodesOptimize(const MyRRT& rrt, const geometry_msgs::Point& sample);
+vector<int> sortNodesExplore(const MyRRT& rrt, const geometry_msgs::Point& sample, const Vehicle& veh);
+vector<int> sortNodesOptimize(const MyRRT& rrt, const geometry_msgs::Point& sample, const Vehicle& veh);
 bool feasibleNode(const MyRRT& rrt, const Node& node, const geometry_msgs::Point& sample);
-bool feasibleGoalBias(const MyRRT& rrt);
-float dubinsDistance(geometry_msgs::Point S, Node N, int dir);
-visualization_msgs::Marker createStateMsg(int ID, const vector<vector<double>> T, bool goalReached);
+bool feasibleGoalBias(const MyRRT& rrt, const Vehicle& veh);
+float dubinsDistance(geometry_msgs::Point S, const Node& N, int dir, const Vehicle& veh);
+visualization_msgs::Marker createStateMsg(int ID, const StateArray& T, bool goalReached);
 visualization_msgs::Marker createEmptyMsg();
 vector<Node> extractBestPath(vector<Node> tree, ros::Publisher* ptrPub);
 
 
 // Reference generation functions
-void generateVelocityProfile(MyReference& ref, const double& a0, const int& IDwp, const double& v0, const double& vmax, const vector<double>& goal, bool GB);
+void generateVelocityProfile(MyReference& ref, const double& a0, const int& IDwp, const double& v0, const double& vmax, const GoalPose& goal, bool GB);
 MyReference getReference(geometry_msgs::Point sample, Node node, signed int dir);
-MyReference getGoalReference(const Vehicle& veh, Node node, vector<double> goalPose);
+MyReference getGoalReference(const Vehicle& veh, Node node, const GoalPose& goalPose);
 vector<double> getCoefficients(const double& Sf, const double& v0, const double& vf, const double& a0, const double& af);
 double getVelocity(const double& v0, const vector<double>& coef, const double& t);
 vector<double> getVelocityVector(const double& v0, const vector<double>& coef, const vector<double>& Tpath);

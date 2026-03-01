@@ -13,9 +13,9 @@ class Simulation{
 		vector<int> closestPoints;
 		vector<double> acmd,dcmd; // controls logging
 		double costS, costE;
-		
+
 		bool goalReached, endReached;
-		Simulation(	const MyRRT& RRT, const vector<double>& state, MyReference& ref, const Vehicle& veh, 
+		Simulation(	const MyRRT& RRT, const VehicleState& state, MyReference& ref, const Vehicle& veh,
 				   	const bool& GoalBiased, const bool& genProfile, const double& Vstart);
 		bool isvalid();
 };

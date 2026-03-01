@@ -6,6 +6,6 @@
 
 // Be sure to update header file
 // Return distance to closest obstacle
-double checkObsDistance(const vector<double>& carState){
+double checkObsDistance(const VehicleState& carState){
     return 100;
 }
